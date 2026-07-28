@@ -303,22 +303,26 @@ def uitars_parser(result):
     # type(content=text) -> keyboard_type(text=text)
     if result["action"].startswith("type(content="):
         result["action"] = translate_uitars_type_action(result["action"])
-    # scroll(direction='down', point='(906,509)') -> scroll(dx, dy)
-    if result["action"].startswith("scroll(direction=d"):
-        direction = re.findall(
-            r"scroll\(direction='(.*?)', point='\((\d+),(\d+)\)'\)", result["action"]
+    # scroll(direction='down'|'up'|'left'|'right', point='(x, y)') -> scroll(dx, dy)
+    if result["action"].startswith("scroll("):
+        dir_match = re.search(
+            r"direction\s*=\s*['\"]?(down|up|left|right)",
+            result["action"],
+            re.IGNORECASE,
         )
-        if direction:
-            result["action"] = f"scroll({int(direction[0][1])}, {int(direction[0][2])})"
-    # scroll(direction='up', point='(906,509)') -> scroll(dx, dy)
-    if result["action"].startswith("scroll(direction=u"):
-        direction = re.findall(
-            r"scroll\(direction='(.*?)', point='\((\d+),(\d+)\)'\)", result["action"]
-        )
-        if direction:
-            result["action"] = (
-                f"scroll({-int(direction[0][1])}, {-int(direction[0][2])})"
-            )
+        nums = re.findall(r"-?\d+", result["action"])
+        if dir_match and len(nums) >= 2:
+            direction = dir_match.group(1).lower()
+            x, y = int(nums[0]), int(nums[1])
+            if direction == "down":
+                dx, dy = 0, y
+            elif direction == "up":
+                dx, dy = 0, -y
+            elif direction == "right":
+                dx, dy = x, 0
+            else:
+                dx, dy = -x, 0
+            result["action"] = f"scroll({dx}, {dy})"
     # right_single(point='(531,256)') -> mouse_click(x, y, button='right')
     if result["action"].startswith("right_single(point="):
         coords = re.findall(r"\d+", result["action"])
