@@ -1,6 +1,6 @@
 """Qwen3-VL / Qwen3.6-VL action_parser: <tool_call> JSON parser + 0-1000 coord rescale.
 
-Prompts (the <tools> schema and examples) live in config/agent/Qwen3.6-VL.yaml.
+Prompts (the <tools> schema and examples) live in config/agent/Qwen3.6-VL-computer-use.yaml.
 Action names mirror UI-TARS's vocabulary; ``type`` maps to keyboard_type and
 ``wait`` to noop.
 """
