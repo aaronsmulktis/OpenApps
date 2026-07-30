@@ -1,4 +1,4 @@
-"""Qwen3-VL / Qwen3.6-VL adapter: <tool_call> JSON parser + 0-1000 coord rescale.
+"""Qwen3-VL / Qwen3.6-VL action_parser: <tool_call> JSON parser + 0-1000 coord rescale.
 
 Prompts (the <tools> schema and examples) live in config/agent/Qwen3.6-VL.yaml.
 Action names mirror UI-TARS's vocabulary; ``type`` maps to keyboard_type and
@@ -11,7 +11,7 @@ import re
 
 from agentlab.llm.llm_utils import ParseError
 
-from .base import Adapter, AdapterResult
+from .base import ActionParser, ActionParserResult
 
 # The model is prompted with a fictional 1000x1000 screen, so all coordinates
 # and scroll deltas it emits are in [0, 1000).
@@ -23,8 +23,8 @@ _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL | re.IGNORECASE)
 _ACTION_LINE_RE = re.compile(r"^\s*Action:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
 
 
-class Qwen3VLAdapter(Adapter):
-    def parse(self, response: str, viewport: tuple[int, int]) -> AdapterResult:
+class Qwen3VLActionParser(ActionParser):
+    def parse(self, response: str, viewport: tuple[int, int]) -> ActionParserResult:
         response = (response or "").strip()
         if not response:
             raise ParseError("Empty response from the model.")

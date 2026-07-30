@@ -1,4 +1,4 @@
-"""Tests for per-model-family adapters (registry + qwen3vl parser + uitars)."""
+"""Tests for per-model-family action_parsers (registry + qwen3vl parser + uitars)."""
 from __future__ import annotations
 
 import json
@@ -6,8 +6,8 @@ import json
 import pytest
 from agentlab.llm.llm_utils import ParseError
 
-from open_apps.agent.adapters import REGISTRY, get_adapter
-from open_apps.agent.adapters.qwen3vl import Qwen3VLAdapter
+from open_apps.agent.action_parsers import REGISTRY, get_action_parser
+from open_apps.agent.action_parsers.qwen3vl import Qwen3VLActionParser
 
 
 VIEWPORT = (1920, 1080)
@@ -17,25 +17,25 @@ VIEWPORT = (1920, 1080)
 # Registry plumbing
 # ---------------------------------------------------------------------------
 
-def test_registry_lists_known_adapters():
+def test_registry_lists_known_action_parsers():
     assert set(REGISTRY) == {"uitars", "qwen3vl"}
 
 
-def test_get_adapter_defaults_to_uitars_when_none():
-    assert type(get_adapter(None)).__name__ == "UITarsAdapter"
+def test_get_action_parser_defaults_to_uitars_when_none():
+    assert type(get_action_parser(None)).__name__ == "UITarsActionParser"
 
 
-def test_get_adapter_raises_on_unknown_name():
-    with pytest.raises(ValueError, match="Unknown adapter 'bogus'"):
-        get_adapter("bogus")
+def test_get_action_parser_raises_on_unknown_name():
+    with pytest.raises(ValueError, match="Unknown action_parser 'bogus'"):
+        get_action_parser("bogus")
 
 
 # ---------------------------------------------------------------------------
-# qwen3vl: prompts live in yaml, not the adapter
+# qwen3vl: prompts live in yaml, not the action_parser
 # ---------------------------------------------------------------------------
 
-def test_qwen_adapter_supplies_no_prompt_defaults():
-    assert Qwen3VLAdapter().default_prompts() == {}
+def test_qwen_action_parser_supplies_no_prompt_defaults():
+    assert Qwen3VLActionParser().default_prompts() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ def _qwen_response(action: str, **args) -> str:
 
 @pytest.fixture
 def qwen():
-    return Qwen3VLAdapter()
+    return Qwen3VLActionParser()
 
 
 def test_qwen_parses_left_click_and_rescales_to_viewport(qwen):
@@ -173,11 +173,11 @@ def test_qwen_raises_when_type_missing_content(qwen):
 
 
 # ---------------------------------------------------------------------------
-# uitars adapter: default path must be untouched
+# uitars action_parser: default path must be untouched
 # ---------------------------------------------------------------------------
 
-def test_uitars_adapter_parses_native_action_syntax():
-    a = get_adapter("uitars")
+def test_uitars_action_parser_parses_native_action_syntax():
+    a = get_action_parser("uitars")
     response = (
         "<think>Click the Submit button.</think>"
         "<action>click(point='<point>100 200</point>')</action>"

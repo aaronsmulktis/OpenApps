@@ -244,7 +244,7 @@ class VllmMainPrompt(dp.PromptElement):
         flags: PromptFlags,
         prompt_txt: dict,
         client_type: str = "vllm",
-        adapter=None,
+        action_parser=None,
         prompt_sections: list[str] | None = None,
     ) -> None:
         super().__init__()
@@ -257,7 +257,7 @@ class VllmMainPrompt(dp.PromptElement):
         self.obs = Observation(obs_history[-1], self.flags.obs)
 
         self.prompt_txt = prompt_txt
-        self.adapter = adapter
+        self.action_parser = action_parser
         self.prompt_sections = prompt_sections
 
         # Viewport (width, height) for coord rescaling; screenshot is (H, W, 3).
@@ -300,7 +300,7 @@ class VllmMainPrompt(dp.PromptElement):
 """
 
     def _render_history_only(self) -> str:
-        # History alone, for adapters that suppress header_block (e.g. qwen3vl).
+        # History alone, for action_parsers that suppress header_block (e.g. qwen3vl).
         return self.history._prompt
 
     def _render_abstract_example(self) -> str:
@@ -375,6 +375,6 @@ It is very important that you follow the format above.
         return self.obs.add_screenshot(prompt)
 
     def _parse_answer(self, text_answer):
-        if self.adapter is not None:
-            return self.adapter.parse(text_answer, viewport=self.viewport)
+        if self.action_parser is not None:
+            return self.action_parser.parse(text_answer, viewport=self.viewport)
         return flexible_parser(text_answer)

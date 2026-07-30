@@ -1,4 +1,4 @@
-# Qwen3.6-VL family config: <tool_call> JSON grammar via the qwen3vl adapter.
+# Qwen3.6-VL family config: <tool_call> JSON grammar via the qwen3vl action_parser.
 # The <tools> schema lives in system_prompt; the user message is minimal
 # (task + history + screenshot). Not runnable on its own — the per-model
 # configs (Qwen3.6-27B.yaml, Qwen3.6-35B-A3B.yaml) inherit it.
@@ -10,13 +10,13 @@ defaults:
 use_axtree: false
 use_screenshot: true
 
-adapter: qwen3vl
+action_parser: qwen3vl
 
 prompt_sections:
 - task
 - history
 
-# The 5 actions the adapter emits (type -> keyboard_type, wait -> noop).
+# The 5 actions the action_parser emits (type -> keyboard_type, wait -> noop).
 custom_actions:
 - mouse_click
 - mouse_dblclick
