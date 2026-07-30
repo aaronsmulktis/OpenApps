@@ -18,6 +18,7 @@ from agentlab.llm.llm_utils import (
 )
 from .utils import CustomActionSetArgs, retry, save_som_coordinates
 from .vLLM_prompt import VllmMainPrompt, PromptFlags
+from .adapters import get_adapter
 
 from anthropic import AnthropicBedrock
 from openai import AzureOpenAI, OpenAI
@@ -226,6 +227,12 @@ class AgentArgs(AgentLabAgentArgs):
     aws_session_token: str = None
     aws_region: str = "us-west-2"
     base_url: str = None
+    # Per-model-family adapter (parser + coordinate space). See
+    # open_apps.agent.adapters. Default preserves the flexible_parser path.
+    adapter: str = "uitars"
+    # User-message sections to render; None = legacy default. See
+    # VllmMainPrompt._SECTION_RENDERERS.
+    prompt_sections: list[str] = None
 
     def make_flags(self) -> PromptFlags:
         return PromptFlags(
@@ -288,6 +295,8 @@ class AgentArgs(AgentLabAgentArgs):
             flags=self.make_flags(),
             prompt_txt=self.prompt_txt,
             save_dir=self.save_dir,
+            adapter_name=self.adapter,
+            prompt_sections=self.prompt_sections,
         )
 
 
@@ -299,6 +308,8 @@ class VLLMAgent(Agent):
         prompt_txt: dict,
         max_retry: int = 3,
         save_dir: str = None,
+        adapter_name: str = "uitars",
+        prompt_sections: list[str] | None = None,
     ):
         logging.info("Initializing vllmAgent with flags: %s", asdict(flags))
         self.chat_llm = chat_model_args.make_model()
@@ -307,6 +318,10 @@ class VLLMAgent(Agent):
         self.flags = flags
         self.action_set = flags.action.action_set.make_action_set()
         self._obs_preprocessor = dp.make_obs_preprocessor(flags.obs)
+        self.adapter = get_adapter(adapter_name)
+        self.prompt_sections = (
+            list(prompt_sections) if prompt_sections is not None else None
+        )
         self.prompt_txt = prompt_txt
         self.save_dir = Path(save_dir) if save_dir is not None else None
         self.reset(seed=None)
@@ -327,6 +342,8 @@ class VLLMAgent(Agent):
             flags=self.flags,
             prompt_txt=self.prompt_txt,  # pass the flags to the prompt
             client_type=self.chat_model_args.client_type,
+            adapter=self.adapter,
+            prompt_sections=self.prompt_sections,
         )
 
         system_prompt = SystemMessage(

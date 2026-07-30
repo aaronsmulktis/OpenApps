@@ -111,18 +111,17 @@ class CustomActionSetArgs(HighLevelActionSetArgs):
 
 
 def image_to_jpg_base64_url(image: np.ndarray | Image.Image):
-    """Convert a numpy array to a base64 encoded image url."""
-
+    # PNG, not JPEG: some sglang multimodal processors (e.g. deepseek-vl2) crash on JPEG input.
     if isinstance(image, np.ndarray):
         image = Image.fromarray(image)
     if image.mode in ("RGBA", "LA"):
         image = image.convert("RGB")
 
     with io.BytesIO() as buffer:
-        image.save(buffer, format="JPEG")
+        image.save(buffer, format="PNG")
         image_base64 = base64.b64encode(buffer.getvalue()).decode()
 
-    return f"data:image/jpeg;base64,{image_base64}"
+    return f"data:image/png;base64,{image_base64}"
 
 
 def retry(
@@ -161,13 +160,27 @@ def retry(
     while tries < n_retry:
         answer = chat(messages)
 
-        logging.info(f"LLM response at try {tries}: {answer['content']}")
+        content = answer.get("content") if isinstance(answer, dict) else None
+        if content is None or (isinstance(content, str) and not content.strip()):
+            # Empty/None content: retry instead of crashing on None in the parser.
+            tries += 1
+            logging.warning(
+                f"Empty model content at try {tries}/{n_retry}; answer: {answer!r}"
+            )
+            messages.append(dict(
+                role="user",
+                content="Your last reply was empty. Please respond in the "
+                        "required format.",
+            ))
+            continue
+
+        logging.info(f"LLM response at try {tries}: {content}")
         try:
-            return parser(answer["content"])
+            return parser(content)
         except ParseError as parsing_error:
             tries += 1
             if log:
-                msg = f"Query failed. Retrying {tries}/{n_retry}.\n[LLM]:\n{answer['content']}\n[User]:\n{str(parsing_error)}"
+                msg = f"Query failed. Retrying {tries}/{n_retry}.\n[LLM]:\n{content}\n[User]:\n{str(parsing_error)}"
                 logging.info(msg)
             messages.append(dict(role="user", content=str(parsing_error)))
 
@@ -279,6 +292,35 @@ def translate_uitars_type_action(action: str) -> str:
     return f"keyboard_type(text={content!r})"
 
 
+_HOTKEY_NAMES = {
+    "backspace": "Backspace", "delete": "Delete", "enter": "Enter",
+    "return": "Enter", "tab": "Tab", "escape": "Escape", "esc": "Escape",
+    "space": "Space", "up": "ArrowUp", "down": "ArrowDown", "left": "ArrowLeft",
+    "right": "ArrowRight", "pageup": "PageUp", "pagedown": "PageDown",
+    "home": "Home", "end": "End", "insert": "Insert",
+    "ctrl": "Control", "control": "Control", "alt": "Alt", "option": "Alt",
+    "shift": "Shift", "cmd": "Meta", "meta": "Meta", "win": "Meta",
+}
+
+
+def _normalize_hotkey_key(key: str) -> "str | None":
+    """Lowercase space-separated hotkey (``ctrl a``) -> playwright form
+    (``Control+a``). Returns None if any token is unrecognized."""
+    toks = key.strip().split()
+    if not toks:
+        return None
+    out = []
+    for t in toks:
+        tl = t.lower()
+        if tl in _HOTKEY_NAMES:
+            out.append(_HOTKEY_NAMES[tl])
+        elif len(t) == 1 and t.isascii():
+            out.append(t)
+        else:
+            return None
+    return "+".join(out)
+
+
 def uitars_parser(result):
     "Translates UITARS actions to browser gym actions"
     # note karenu: I am not sure if the translation is perfect
@@ -334,11 +376,12 @@ def uitars_parser(result):
         result["action"] = (
             f"mouse_click(x={int(coords[0])}, y={int(coords[1])}, button='right')"
         )
-    # hotkey(key='ctrl alt e') -> keyboard_press(key=key_comb)
+    # hotkey(key='ctrl alt e') -> keyboard_press(key='Control+Alt+e')
     if result["action"].startswith("hotkey(key="):
         key_comb = re.findall(r"hotkey\(key='(.*?)'\)", result["action"])
         if key_comb:
-            result["action"] = f"keyboard_press(key='{key_comb[0]}')"
+            key = _normalize_hotkey_key(key_comb[0]) or key_comb[0]
+            result["action"] = f"keyboard_press(key='{key}')"
 
     return result
 
