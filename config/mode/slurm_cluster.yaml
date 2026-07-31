@@ -1,7 +1,7 @@
 # @package _global_
 project: open_apps
 
-logs_dir:  /checkpoint/${oc.env:USER}/logs/${project}/${now:%Y-%m-%d_%H-%M-%S}-${oc.env:USER}-${agent.model_name}/${job_id}
+logs_dir:  /checkpoint/memorization/${oc.env:USER}/logs/${project}/${now:%Y-%m-%d_%H-%M-%S}-${oc.env:USER}-${agent.model_name}/${job_id}
 databases_dir: ${logs_dir}/databases
 
 cluster: slurm
@@ -12,7 +12,9 @@ slurm_sweep_launcher:
   tasks_per_node: 1
   cpus_per_task: 2
   timeout_min: 400
-  slurm_partition: "ADD YOURS"  
+  slurm_account: memorization
+  slurm_qos: h200_memorization_high
+  slurm_partition: h200
   mem_gb: 10
   slurm_srun_args: ["-vv", "--cpu-bind", "none"]
   slurm_comment: "parallel agent tasks"

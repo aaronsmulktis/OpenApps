@@ -1,31 +1,24 @@
 import dataclasses
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
 import bgym
 import numpy as np
-import re
 import wandb
-
-from bgym import HighLevelActionSetArgs
-from browsergym.experiments.agent import Agent, AgentInfo
-
 from agentlab.agents.generic_agent.generic_agent import (
-    GenericAgentArgs,
     GenericAgent,
+    GenericAgentArgs,
     GenericPromptFlags,
 )
 from agentlab.llm.chat_api import BaseModelArgs
-from agentlab.llm.base_api import AbstractChatModel, BaseModelArgs
-import agentlab.agents.dynamic_prompting as dp
-from agentlab.llm.llm_utils import (
-    Discussion,
-    HumanMessage,
-    SystemMessage,
-)
 
-from browsergym.experiments.agent import Agent
+import agentlab.agents.dynamic_prompting as dp
+from agentlab.llm.base_api import AbstractChatModel, BaseModelArgs
+from agentlab.llm.llm_utils import Discussion, HumanMessage, SystemMessage
+from bgym import HighLevelActionSetArgs
+from browsergym.experiments.agent import Agent, AgentInfo
 from open_apps.agent.utils import save_som_coordinates
 
 
@@ -123,13 +116,17 @@ class DummyAgent(GenericAgent):
     def get_action(self, obs: Any):
         self.obs_history.append(obs)
         if self.save_dir is not None:
-            save_som_coordinates(obs, step=len(self.obs_history) - 1, save_dir=self.save_dir)
+            save_som_coordinates(
+                obs, step=len(self.obs_history) - 1, save_dir=self.save_dir
+            )
         response = "I'm a dummy agent, I click on a random link"
         print("the response is: ", response)
 
         messages = Discussion(SystemMessage("You are a web assistant."))
         messages.append(HumanMessage(f"""{obs["axtree_txt"]} """))
-        clickable_elements = re.findall(r'\[(\d+)\]\s*(?:link|button)\b', messages[-1]['content'])
+        clickable_elements = re.findall(
+            r"\[(\d+)\]\s*(?:link|button)\b", messages[-1]["content"]
+        )
         print("the content of the last message is: ", messages[-1]["content"])
         if clickable_elements:
             print("clickable elements are: ", clickable_elements)

@@ -44,9 +44,13 @@ hydra:
     subdir: ${hydra.job.num}
 
 wandb:
-  project: ${project}
+  # project: ${project}
+  project: open_apps_aaronsmulktis
   entity: ${oc.env:USER}
   notes: null
   tags: null
   save_code: True
   reinit: True
+  # group all runs from one launch batch; job_type is usually the agent
+  group: null
+  job_type: null

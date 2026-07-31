@@ -10,41 +10,39 @@ Orchestrates the configs to launch the web envirnoment,
 task, and agent.
 """
 
+import os
+import random
+import shutil
+import signal
+import socket
+import subprocess
+import time
+import urllib.parse  # Add this import
+import urllib.request
+from pathlib import Path
+
 # Standard library imports
 from subprocess import PIPE
-import subprocess
-from pathlib import Path
-import shutil
-import os
-import socket
-import signal
+from time import sleep
+from typing import Optional
+
+import browsergym
+import git
+import hydra
+import wandb
+import yaml
+from browsergym.experiments import ExpArgs, get_exp_result
+from fasthtml.common import serve
+from killport import kill_ports
 
 # Third-party imports
 from omegaconf import DictConfig, OmegaConf
-import browsergym
-from fasthtml.common import serve
-import wandb
-import yaml
-import git
-from typing import Optional
-from time import sleep
-import hydra
-import urllib.request
-import time
-import urllib.parse  # Add this import
-from open_apps.utils import merge_plus_keys
-from browsergym.experiments import ExpArgs, get_exp_result
-
 
 # Project-specific imports
-from open_apps.apps.start_page.main import (
-    initialize_routes_and_configure_task,
-)
-import socket
-from killport import kill_ports
-import random
+from open_apps.apps.start_page.main import initialize_routes_and_configure_task
 from open_apps.tasks.add_tasks_to_browsergym import register_tasks_with_browsergym
 from open_apps.tasks.tasks import Task
+from open_apps.utils import merge_plus_keys
 
 try:
     # Register the custom 'now' resolver
@@ -117,7 +115,14 @@ class OpenAppsLauncher:
         # increase timeout per wandb folks' suggestion
         # to avoid FAIR cluster network issues
         os.environ["WANDB_INIT_TIMEOUT"] = "60"
-        run_name = f"openapps"
+        agent_name = self.config.agent.get(
+            "model_name", self.config.agent.get("agent_name", "agent")
+        )
+        run_name = f"openapps-{agent_name}"
+        task_name = self.config.get("task_name")
+        if task_name:
+            run_name = f"{run_name}-{task_name}"
+
         logger = wandb.init(
             **self.config.wandb,
             name=run_name,
@@ -227,10 +232,16 @@ class OpenAppsLauncher:
         if self.config.apps.onlineshop.enable:
             command += " apps.onlineshop.enable=True"
         print("Launching web app with command: ", command)
+        # Redirect the web app's output to a file rather than an unread PIPE.
+        # An unread PIPE fills its OS buffer (~64KB) and blocks the web server
+        # on write, wedging the whole run so the process never exits.
+        webapp_log_path = Path(self.config.logs_dir) / "webapp.log"
+        self._webapp_log_fh = open(webapp_log_path, "a")
         process = subprocess.Popen(
             command,
             shell=True,
-            stdout=subprocess.PIPE,
+            stdout=self._webapp_log_fh,
+            stderr=subprocess.STDOUT,
             start_new_session=True,
             executable="/bin/bash",  # Use bash explicitly for 'source' command
         )
@@ -291,6 +302,11 @@ class AgentLauncher(OpenAppsLauncher):
             # Only log if key exists in exp_record (avoid KeyError on failed runs)
             if key in exp_record:
                 wandb.log({key: exp_record[key]})
+        # Single value per run for report aggregation (accuracy = mean success).
+        # BrowserGym emits a terminal reward of 1.0 on task success, else 0.
+        cum_reward = float(exp_record.get("cum_reward") or 0.0)
+        wandb.run.summary["cum_reward"] = cum_reward
+        wandb.run.summary["success"] = int(cum_reward >= 1.0)
         actions_data = [
             [
                 i,
@@ -369,6 +385,10 @@ class AgentLauncher(OpenAppsLauncher):
             time.sleep(4)
             kill_ports(ports=[self.web_app_port])
             print("OpenApps successfully stopped.")
+        webapp_log_fh = getattr(self, "_webapp_log_fh", None)
+        if webapp_log_fh is not None:
+            webapp_log_fh.close()
+            self._webapp_log_fh = None
 
     def wait_until_apps_start(self, apps_process, times_to_wait: int = 10):
         is_app_running = False
@@ -378,9 +398,14 @@ class AgentLauncher(OpenAppsLauncher):
                 break
             print("Waiting for OpenApps to start...")
             sleep(10)
-            (stdout, stderr) = apps_process.communicate()
-            print(stdout)
-            print(stderr)
+            # Do NOT call apps_process.communicate() here: it blocks until the
+            # process exits, but the web server runs forever, so it would
+            # deadlock. Just check the server didn't die during startup.
+            if apps_process.poll() is not None:
+                raise RuntimeError(
+                    "Web app process exited before becoming ready; see "
+                    f"{Path(self.config.logs_dir) / 'webapp.log'}"
+                )
         if is_app_running:
             print("OpenApps is running, proceeding to run the agent.")
         else:
