@@ -1,0 +1,7 @@
+defaults:
+- default
+- _self_
+model_name: google/gemma-4-E2B-it
+model_pretty_name: Gemma-4-E2B-it
+client_type: vllm
+port: "8000"
