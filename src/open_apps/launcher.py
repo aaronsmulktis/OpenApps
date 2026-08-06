@@ -311,8 +311,12 @@ class AgentLauncher(OpenAppsLauncher):
             [
                 i,
                 str(step_info.action),
-                str(step_info.obs["open_pages_urls"]),
-                str(step_info.agent_info.get("think")),
+                str(step_info.obs.get("open_pages_urls") if step_info.obs else None),
+                str(
+                    step_info.agent_info.get("think")
+                    if step_info.agent_info
+                    else None
+                ),
             ]
             for i, step_info in enumerate(exp_result.steps_info)
         ]
