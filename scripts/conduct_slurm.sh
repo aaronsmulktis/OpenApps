@@ -8,8 +8,8 @@
 # laptop is needed.
 #
 # Submit:
-#   AGENTS=gemma-4-e2b-it COUNT=1 sbatch scripts/conduct_slurm.sh
-#   AGENTS="gemma-4-e2b-it" COUNT=20 MAX_PARALLEL=4 sbatch scripts/conduct_slurm.sh
+#   AGENTS=gemma-4-computer-use COUNT=1 sbatch scripts/conduct_slurm.sh
+#   AGENTS="gemma-4-computer-use" COUNT=20 MAX_PARALLEL=4 sbatch scripts/conduct_slurm.sh
 #
 # Override discovery by pinning the node explicitly:
 #   VLLM_HOST=h200-000-026 AGENTS=gemma-4-e2b-it COUNT=1 sbatch scripts/conduct_slurm.sh
