@@ -377,11 +377,12 @@ class AgentLauncher(OpenAppsLauncher):
         if self.config.use_wandb:
             wandb.finish()
         apps_process.terminate()
-        apps_process.wait()
-        apps_still_running = apps_process.poll() is not None
-        if apps_still_running:
+        try:
+            apps_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
             print("Apps process is still running, stopping OpenApps...")
             apps_process.kill()
+            apps_process.wait()
             time.sleep(4)
             kill_ports(ports=[self.web_app_port])
             print("OpenApps successfully stopped.")
