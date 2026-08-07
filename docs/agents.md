@@ -77,25 +77,18 @@ If AgentLab's capabilities don't meet your needs, you can create a custom agent.
 
 1. Navigate to `src/open_apps/agent/`
 2. Copy and modify the following files:
-   
+
       - `vLLM_agent.py`
       - `vLLM_prompt.py`
 
 This allows you to build rich, custom agent implementations tailored to your specific requirements.
 
-## Running Evals on the Cluster (SLURM + vLLM + W&B)
+## Running Evals on a Cluster (SLURM + vLLM + W&B)
 
-Your laptop cannot reach cluster-internal IPs, and SSH tunneling through the
-brokered login is fragile. Instead, run the eval **as a SLURM job on the cluster**,
-co-located with vLLM, so the agent reaches the model over the internal network —
-no tunnel required. The browser runs headless on the eval node; only LLM calls
-and W&B logging leave the node.
-
-The workflow is two jobs:
+The workflow consists of two jobs:
 
 1. A persistent **vLLM GPU job** that serves the model on `:8000`.
-2. An **eval CPU job** (`sbatch scripts/conduct_slurm.sh`) that auto-discovers the
-   vLLM node and runs the worker pool against it.
+2. An **eval CPU job** (`sbatch scripts/conduct_slurm.sh`) that auto-discovers the vLLM node and runs the worker pool against it.
 
 ### One-time cluster setup
 
