@@ -44,8 +44,9 @@ hydra:
     subdir: ${hydra.job.num}
 
 wandb:
-  # project: ${project}
-  project: open_apps_aaronsmulktis
+  project: open_apps
+  # Or a user specific project
+  # project: open_apps_${oc.env:USER}
   entity: ${oc.env:USER}
   notes: null
   tags: null

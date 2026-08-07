@@ -99,17 +99,17 @@ The workflow is two jobs:
 
 ### One-time cluster setup
 
-The repo needs to live on shared storage (e.g. `/checkpoint/memorization/$USER`
+The repo needs to live on shared storage (e.g. `/example/dir/$USER`
 or `/storage/home/$USER`). On a login node:
 
 ```bash
 # Bring the repo over. Use rsync if you have uncommitted local changes (e.g.
 # scripts/conduct.sh) that aren't pushed yet:
-rsync -av --exclude .venv /path/to/local/OpenApps/ /checkpoint/memorization/$USER/OpenApps/
+rsync -av --exclude .venv /path/to/local/OpenApps/ /example/dir/$USER/OpenApps/
 # ...or clone it fresh:
-#   git clone <repo-url> /checkpoint/memorization/$USER/OpenApps
+#   git clone <repo-url> /example/dir/$USER/OpenApps
 
-cd /checkpoint/memorization/$USER/OpenApps
+cd /example/dir/$USER/OpenApps
 
 # Python env
 curl -LsSf https://astral.sh/uv/install.sh | sh   # install uv if needed
@@ -125,7 +125,7 @@ uv run playwright install-deps chromium   # system deps (may need sudo/module)
 # Secrets — do NOT commit this file
 cat > .env <<'EOF'
 OPENAI_API_KEY=sk-...
-WANDB_BASE_URL=https://meta-fair.wandb.io/
+WANDB_BASE_URL=...
 WANDB_API_KEY=...
 EOF
 ```
@@ -138,8 +138,7 @@ Give it a generous `--time` so it isn't killed mid-eval. For example, an
 interactive allocation:
 
 ```bash
-srun --account=memorization --qos=h200_memorization_high --partition=h200 \
-     --gpus-per-node=1 --time=1440 --pty bash
+srun --account=example_account --qos=example_qos --partition=example_partition \ --gpus-per-node=1 --time=1440 --pty bash
 # then, on the GPU node:
 vllm serve google/gemma-4-E2B-it --host 0.0.0.0 --port 8000
 ```
@@ -173,7 +172,7 @@ model*, so it doesn't matter how the vLLM job was started (e.g. a `bash`-named
 **Override:** skip discovery by pinning the node:
 
 ```bash
-VLLM_HOST=h200-000-026 AGENTS=gemma-4-e2b-it COUNT=1 sbatch scripts/conduct_slurm.sh
+VLLM_HOST=example_host AGENTS=gemma-4-e2b-it COUNT=1 sbatch scripts/conduct_slurm.sh
 ```
 
 Other env overrides: `VLLM_MODEL`, `VLLM_PORT`, and `WANDB_MODE` (set
