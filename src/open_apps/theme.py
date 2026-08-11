@@ -14,8 +14,8 @@ apps consume via ``var(--token)``. This decouples *look* (theme) from
 
 Selection is done with Hydra overrides:
 
-* ``apps/theme=solarized``      -> global default for every app
-* ``apps.todo.theme=solarized`` -> override a single app (falls back to
+* ``+apps/theme=solarized``      -> global default for every app (requires adding the group if not in defaults)
+* ``apps.todo.theme=solarized``  -> override a single app (falls back to
   the global theme when the app's ``theme`` field is null/unset)
 
 A theme file looks like::
