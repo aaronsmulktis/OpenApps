@@ -90,6 +90,10 @@ def resolve_theme(apps_config, app_name: str) -> dict:
 
     global_theme = getattr(apps_config, "theme", None)
     if global_theme is not None:
+        # Allow global theme to be provided either as a composed config node
+        # (apps/theme=<name>) or as a plain string override (apps.theme=<name>). 
+        if isinstance(global_theme, str):
+            return load_theme(global_theme)
         theme = _as_plain(global_theme)
         theme.setdefault("tokens", {})
         theme["tokens"] = _as_plain(theme["tokens"])
