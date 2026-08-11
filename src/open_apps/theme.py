@@ -108,8 +108,23 @@ def render_theme_tokens(theme: dict) -> Style:
     ``theme`` is the dict returned by :func:`resolve_theme` / :func:`load_theme`.
     """
     tokens = _as_plain(theme.get("tokens", {}))
-    lines = "\n".join(f"  --{key}: {value};" for key, value in tokens.items())
+
+    safe_lines: list[str] = []
+    for key, value in tokens.items():
+        key = str(key)
+        # Allow only simple custom-property names to avoid broken CSS/injection.
+        if (not key) or any(not (c.isalnum() or c in "-_") for c in key):
+            continue
+        val = str(value).replace("\n", " ").replace("\r", " ")
+        safe_lines.append(f"  --{key}: {val};")
+
+    lines = "\n".join(safe_lines)
+
     import_url = (theme.get("import_url") or "").strip()
+    # Avoid breaking out of the quoted @import string.
+    if any(c in import_url for c in ('"', "'", "\n", "\r")):
+        import_url = ""
+
     import_rule = f'@import url("{import_url}");\n' if import_url else ""
     css = f"{import_rule}:root {{\n{lines}\n}}"
     return Style(css)
