@@ -38,9 +38,8 @@ custom_actions:
 
 use_html: true
 use_axtree: true
-use_som: True	# Set-of-marks (visual annotation overlay)
 use_screenshot: true
-save_som: false
+save_som: true
 extract_visible_tag: false
 extract_clickable_tag: false
 extract_coords: false
