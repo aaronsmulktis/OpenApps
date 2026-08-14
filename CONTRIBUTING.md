@@ -2,6 +2,19 @@
 We want to make contributing to this project as easy and transparent as
 possible.
 
+## Development setup
+After cloning, run:
+
+```sh
+./scripts/setup-dev.sh
+```
+
+This configures a few per-clone git settings — most importantly a `pre-push`
+hook. Git does not allow a repository to install its own hooks at clone time,
+so this step cannot be automated away.
+
+Verify at any point with `./scripts/setup-dev.sh --check`.
+
 ## Pull Requests
 We actively welcome your pull requests.
 

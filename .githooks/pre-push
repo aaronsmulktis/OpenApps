@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+#
+# pre-push — keeps internal-only commits from reaching a public remote.
+#
+# Enable, per clone:   git config core.hooksPath .githooks
+# Disable:             git config --unset core.hooksPath
+#
+# Written against bash 3.2 (what macOS ships) — no mapfile, no associative
+# arrays, no `${arr[@]}` on a possibly-empty array under `set -u`. Lists go
+# through temp files instead.
+#
+# ---------------------------------------------------------------------------
+# WHAT THIS IS (and is not)
+#
+# This is fast local feedback, not an enforcement boundary. `git push
+# --no-verify` skips it entirely, and hooks are per-clone, so a fresh clone is
+# unguarded until someone runs the config line above. The real boundaries are
+# (a) separate clones — one with only public remotes, one with only internal —
+# and (b) server-side rules on the public repo. Treat this as the thing that
+# catches honest mistakes, and don't let it become the only control.
+#
+# ---------------------------------------------------------------------------
+# LOAD-BEARING ASSUMPTION
+#
+# Internal-only commits live *exclusively* on branches named int/*.
+#
+# Check 2 below is defined entirely in terms of that namespace. Internal work
+# that lands on a branch outside int/* is invisible to it. As of this writing
+# no int/* branches exist yet, so check 2 is a no-op — it starts protecting you
+# only after the branch rename. Don't read a passing push as coverage until
+# then.
+#
+# ---------------------------------------------------------------------------
+# THE THREE CHECKS
+#
+#   1. Ref name    — refuse to push any int/* ref to a public remote.
+#                    Works immediately, no setup required.
+#   2. Lineage     — refuse any commit reachable from int/* but not yet public.
+#                    This is the one that catches edits to *shared* files,
+#                    where nothing about the path or content looks internal.
+#   3. Content     — regex sweep over the patch text and commit messages of
+#                    everything new. Catches content hand-copied onto a
+#                    legitimately-public branch, which check 2 cannot see
+#                    because that branch's lineage is clean.
+#
+# Checks 2 and 3 are complementary in one specific way worth knowing: `git log
+# -G` does not examine merge commit diffs, so internal content arriving via a
+# merge from int/* is invisible to check 3 — but check 2 catches it on lineage.
+#
+# ---------------------------------------------------------------------------
+# OUTPUT DISCIPLINE
+#
+# Failures report commit SHAs and a pattern *index*. The hook never echoes
+# matched text or the pattern itself — that output lands in scrollback, CI
+# logs, and pasted bug reports.
+
+set -u
+
+remote_name="${1:-}"
+remote_url="${2:-}"
+
+die()  { printf '\n\033[31mpre-push: %s\033[0m\n\n' "$1" >&2; exit 1; }
+note() { printf 'pre-push: %s\n' "$1" >&2; }
+
+# ---------------------------------------------------------------------------
+# Step 0 — is this clone internal-aware at all?
+#
+# A clone with neither an `internal` remote nor any int/* ref cannot contain
+# internal commits, so there is nothing to guard. Public contributors are never
+# blocked, warned, or prompted for setup they don't need.
+#
+# Both conditions, not just the remote: testing only for the remote left a hole
+# where `git remote remove internal` silently disarmed the hook while int/*
+# branches were still sitting in the object store.
+# ---------------------------------------------------------------------------
+if ! git remote get-url internal >/dev/null 2>&1 && [ -z "$(
+        git for-each-ref --count=1 --format='%(refname)' \
+            refs/heads/int refs/remotes/internal/int 2>/dev/null)" ]; then
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Step 1 — is the destination public?
+#
+# Classify by matching the configured internal remote rather than hardcoding an
+# org name. Anything we don't positively recognise as internal is treated as
+# public, so an unknown or newly-added remote fails toward running the checks.
+# ---------------------------------------------------------------------------
+[ "$remote_name" = "internal" ] && exit 0
+for u in $(git remote get-url --all internal 2>/dev/null) \
+         $(git remote get-url --push --all internal 2>/dev/null); do
+    [ "$remote_url" = "$u" ] && exit 0
+done
+
+# Everything below here is a push to a PUBLIC remote.
+
+tmpdir=$(mktemp -d) || die "could not create temp dir"
+trap 'rm -rf "$tmpdir"' EXIT
+
+# Remote-tracking refs of every non-internal remote == "already public".
+# Used as the subtrahend throughout: "new to the public world" is anything not
+# reachable from these. Held as a plain string and deliberately expanded
+# unquoted — remote names cannot contain whitespace.
+public_not=""
+for r in $(git remote); do
+    [ "$r" = "internal" ] && continue
+    public_not="$public_not --remotes=$r"
+done
+[ -n "$public_not" ] && public_not="--not$public_not"
+
+# ---------------------------------------------------------------------------
+# Step 2 — build the taint set (check 2's backing data)
+#
+# Internal-only commits = reachable from an int/* ref, minus anything already
+# public. The subtraction is what makes this safe against the current state of
+# the `internal` remote, which still mirrors the public branches: those shared
+# commits are reachable from origin/upstream too, so they fall out here rather
+# than generating false positives.
+# ---------------------------------------------------------------------------
+internal_refs=$(git for-each-ref --format='%(refname)' \
+                    refs/heads/int refs/remotes/internal/int 2>/dev/null | tr '\n' ' ')
+
+taint="$tmpdir/taint"
+: > "$taint"
+if [ -n "${internal_refs// /}" ]; then
+    git rev-list $internal_refs $public_not 2>/dev/null | sort > "$taint"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 3 — load patterns (check 3's backing data)
+#
+# Two sources, neither of which ever reaches a public branch:
+#
+#   1. $GIT_DIR/patterns.local — untracked by construction, per-clone, never
+#      pushed anywhere. For anything too sensitive even for the internal repo.
+#   2. .githooks/patterns.txt on int/main — read straight out of the ref via
+#      `git show`, so it resolves no matter which branch is checked out and
+#      exists in no commit that goes public. Tracked and reviewable.
+# ---------------------------------------------------------------------------
+git_dir=$(git rev-parse --git-dir)
+patterns_ref='refs/remotes/internal/int/main'
+patterns_path='.githooks/patterns.txt'
+patterns="$tmpdir/patterns"
+
+{
+    [ -r "$git_dir/patterns.local" ] && cat "$git_dir/patterns.local"
+    git show "$patterns_ref:$patterns_path" 2>/dev/null
+} | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' > "$patterns"
+
+# Fail-closed, but only once the topology actually exists. Distinguishing these
+# two cases matters: pre-rename there is nothing to protect, and blocking every
+# push would just train people to reach for --no-verify.
+if [ ! -s "$patterns" ]; then
+    if git rev-parse --verify --quiet "$patterns_ref" >/dev/null; then
+        die "internal topology is set up but the pattern list is unreadable.
+  Expected $patterns_path on $patterns_ref
+  Try:  git fetch internal
+  Refusing to push to a public remote without it."
+    fi
+    note "no int/* topology yet — checks 2 and 3 inactive (see comments in $0)"
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4 — walk the refs being pushed
+#
+# stdin format:  <local-ref> <local-sha> <remote-ref> <remote-sha>
+#
+# There is no reliable way to detect `git push --all` / `--mirror` from inside
+# the hook. We don't need one: every ref in the push arrives on stdin and is
+# checked individually, so a mirror push carrying an int/* ref trips check 1 on
+# that ref.
+#
+# Every git call in this loop gets </dev/null so it cannot eat the ref list.
+# ---------------------------------------------------------------------------
+failed=0
+new="$tmpdir/new"
+
+banner() {
+    printf '\n\033[31mBLOCKED\033[0m  %s -> %s (%s)\n' "$1" "$2" "$remote_name" >&2
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "${local_ref:-}" ] || continue
+
+    # Deleting a remote ref sends an all-zero local sha. Nothing new becomes
+    # public, so it's out of scope for a leak guard.
+    case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+
+    # --- Check 1: ref name -------------------------------------------------
+    case "$local_ref" in
+        refs/heads/int|refs/heads/int/*)
+            banner "$local_ref" "$remote_ref"
+            printf '  internal branch pushed to a public remote\n' >&2
+            failed=1
+            continue
+            ;;
+    esac
+
+    # Commits in this push that aren't already public anywhere.
+    git rev-list "$local_sha" $public_not </dev/null 2>/dev/null | sort > "$new"
+    [ -s "$new" ] || continue
+
+    # --- Check 2: lineage --------------------------------------------------
+    if [ -s "$taint" ]; then
+        offenders=$(comm -12 "$new" "$taint")
+        if [ -n "$offenders" ]; then
+            banner "$local_ref" "$remote_ref"
+            printf '  %s commit(s) reachable from int/* are not yet public:\n' \
+                   "$(printf '%s\n' "$offenders" | wc -l | tr -d ' ')" >&2
+            printf '%s\n' "$offenders" | head -20 | while read -r c; do
+                printf '    %s\n' "$(git log -1 --format='%h %s' "$c" </dev/null)" >&2
+            done
+            failed=1
+            continue
+        fi
+    fi
+
+    # --- Check 3: content --------------------------------------------------
+    # Indexed, not named: report which rule fired, never what it says.
+    idx=0
+    while IFS= read -r pat; do
+        idx=$((idx + 1))
+        hits=$(
+            {
+                git log --format='%h' -E -i -G"$pat" \
+                    "$local_sha" $public_not </dev/null 2>/dev/null
+                git log --format='%h' -E -i --grep="$pat" \
+                    "$local_sha" $public_not </dev/null 2>/dev/null
+            } | sort -u | tr '\n' ' '
+        )
+        if [ -n "${hits// /}" ]; then
+            banner "$local_ref" "$remote_ref"
+            printf '  internal pattern #%d matched in: %s\n' "$idx" "$hits" >&2
+            failed=1
+        fi
+    done < "$patterns"
+done
+
+if [ "$failed" -ne 0 ]; then
+    die "push refused.
+
+  If this is a false positive, fix the topology rather than bypassing:
+  internal work belongs on int/* and should be pushed to \`internal\`.
+
+  Deliberate override (leaves no trace, think first):
+      git push --no-verify"
+fi
+
+exit 0

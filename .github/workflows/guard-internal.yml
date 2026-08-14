@@ -1,0 +1,76 @@
+name: Internal content guard
+
+# Server-side companion to .githooks/pre-push.
+#
+# The local hook guards the push; this guards the pull request. It matters
+# because a workflow cannot be skipped with --no-verify and runs whether or not
+# the contributor ever ran scripts/setup-dev.sh.
+#
+# What this CANNOT do: stop a leak. By the time a workflow runs, the branch is
+# already on a public remote and the content is already public. Blocking has to
+# happen at the push boundary — see .github/rulesets/block-internal-refs.json,
+# which is the piece that actually prevents rather than detects.
+
+on:
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Branch names on a fork PR are attacker-controlled, so every value below
+      # crosses into the shell through env rather than ${{ }} interpolation.
+      - name: Reject int/* head branches
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          case "$HEAD_REF" in
+            int|int/*)
+              echo "::error::Head branch '$HEAD_REF' is an internal branch and cannot be merged to a public branch."
+              exit 1
+              ;;
+          esac
+          echo "head branch '$HEAD_REF' is not in the internal namespace"
+
+      - name: Reject internal-only artifacts
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # These two paths exist only on int/* branches by design. Their
+          # appearance in a public PR means a branch crossed the boundary.
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          bad=$(printf '%s\n' "$changed" | grep -E '^(\.gitattributes|\.githooks/patterns\.txt)$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::PR touches internal-only paths:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "no internal-only artifacts in diff"
+
+      - name: Reject commits marked Internal-Only
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # .githooks/commit-msg stamps every commit made on an int/* branch
+          # with this trailer. The trailer travels with the commit message, so
+          # it survives a cherry-pick — which is precisely the case the local
+          # lineage check misses, since cherry-picking produces a fresh SHA
+          # that is no longer reachable from any int/* ref.
+          marked=$(git log --format='%H %s' --grep='^Internal-Only:' \
+                     "$BASE_SHA".."$HEAD_SHA" || true)
+          if [ -n "$marked" ]; then
+            echo "::error::PR contains commits stamped Internal-Only:"
+            printf '%s\n' "$marked"
+            exit 1
+          fi
+          echo "no Internal-Only commits in range"

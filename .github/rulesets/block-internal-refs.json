@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Importable GitHub repository ruleset. Apply to BOTH public repos:",
+    "  facebookresearch/OpenApps  and  aaronsmulktis/OpenApps",
+    "",
+    "Settings -> Rules -> Rulesets -> New ruleset -> Import a ruleset,",
+    "or:  gh api -X POST repos/OWNER/REPO/rulesets --input this-file.json",
+    "",
+    "This is the only layer here that PREVENTS rather than DETECTS. It rejects",
+    "the push itself, server-side, so it holds against `git push --no-verify`,",
+    "against a fresh clone where nobody ran scripts/setup-dev.sh, and against a",
+    "clone where core.hooksPath was never set. The local hook and the PR",
+    "workflow are both bypassable; this is not.",
+    "",
+    "Keep bypass_actors empty. An admin bypass would defeat the point, since",
+    "the people most likely to hold int/* branches locally are the admins.",
+    "",
+    "Does NOT belong on fairinternal/openapps-internal — int/* is exactly what",
+    "that repo is for."
+  ],
+  "name": "block-internal-refs",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/int",
+        "refs/heads/int/**"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    { "type": "creation" },
+    { "type": "update" }
+  ]
+}

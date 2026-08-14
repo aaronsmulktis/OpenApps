@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# commit-msg — stamp commits made on int/* with an Internal-Only trailer.
+#
+# Closes the cherry-pick hole. The pre-push lineage check works on commit
+# reachability, so a cherry-pick from int/* to a public branch defeats it
+# entirely: the new commit has a fresh SHA and is not reachable from any int/*
+# ref, so it looks clean. A trailer lives in the commit message, and
+# cherry-pick copies the message, so the marker survives the trip.
+#
+# .github/workflows/guard-internal.yml rejects any PR containing a commit with
+# this trailer.
+#
+# Not a boundary — someone can edit the trailer out. It turns a silent failure
+# mode into a loud one, which is the realistic goal.
+
+set -u
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
+case "$branch" in
+    int|int/*) ;;
+    *) exit 0 ;;
+esac
+
+# Idempotent: amends and rebases re-run this hook against a message that may
+# already carry the trailer.
+grep -qi '^Internal-Only:' "$1" && exit 0
+
+printf '\nInternal-Only: true\n' >> "$1"
+exit 0

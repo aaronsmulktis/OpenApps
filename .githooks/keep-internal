@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# keep-internal — merge driver for files that deliberately differ between
+# public and int/* branches at the same path.
+#
+# Wired up by scripts/setup-dev.sh as:
+#     merge.keep-internal.driver = .githooks/keep-internal %O %A %B %P
+#
+# and applied per-path by .gitattributes on int/* :
+#     config/mode/slurm_cluster.yaml  merge=keep-internal
+#
+# Arguments (Git's merge-driver contract):
+#   $1  %O  common ancestor version
+#   $2  %A  our version   — the internal copy. The result must be left here.
+#   $3  %B  their version — the incoming public copy.
+#   $4  %P  the path being merged, for reporting.
+#
+# Resolution is always "keep ours". Exit 0 means resolved, so the merge does not
+# stop. We never write to $2, so the internal copy survives untouched.
+#
+# The reason this isn't just `true`: keeping ours silently means a change public
+# made to this path vanishes with no signal at all. Comparing ancestor to theirs
+# tells us whether that actually happened, so drift gets announced on the merge
+# that caused it rather than discovered months later.
+
+set -u
+
+ancestor="$1"
+theirs="$3"
+path="$4"
+
+if ! cmp -s "$ancestor" "$theirs"; then
+    printf '\n\033[33mkeep-internal:\033[0m public changed %s — internal copy kept.\n' "$path" >&2
+    printf '  That change was NOT applied here. Review and port it by hand if it matters:\n' >&2
+    printf '      git diff main:%s int/main:%s\n\n' "$path" "$path" >&2
+fi
+
+exit 0
