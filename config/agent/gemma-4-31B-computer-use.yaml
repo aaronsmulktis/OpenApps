@@ -21,20 +21,20 @@ aws_secret_key: null
 aws_session_token: null
 aws_region: us-west-2
 
-custom_actions:
-- mouse_click
-- mouse_dblclick
-- scroll
-- mouse_move
-- mouse_down
-- mouse_up
-- mouse_drag_and_drop
-- mouse_upload_file
-- keyboard_down
-- keyboard_up
-- keyboard_press
-- keyboard_type
-- keyboard_insert_text
+# custom_actions:
+# - mouse_click
+# - mouse_dblclick
+# - scroll
+# - mouse_move
+# - mouse_down
+# - mouse_up
+# - mouse_drag_and_drop
+# - mouse_upload_file
+# - keyboard_down
+# - keyboard_up
+# - keyboard_press
+# - keyboard_type
+# - keyboard_insert_text
 
 use_html: true
 use_axtree: true
