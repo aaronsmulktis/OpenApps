@@ -41,6 +41,7 @@ def parsed_action(response: str) -> str:
 
 
 GEMMA_SOM = "gemma-4-31B-computer-use"
+GEMMA_COORDS = "gemma-4-31B-coords"
 
 
 class TestGemmaSomConfig:
@@ -127,6 +128,62 @@ class TestGemmaSomConfig:
         ]
         for text in texts:
             assert "coordinate" not in str(text).lower()
+
+
+class TestGemmaCoordsConfig:
+    """The screenshot-only + pixel-coordinate Gemma config.
+
+    Its whole premise is that the declared coordinate grid, the prompt, and
+    ``coord_scale`` agree. If they drift apart the clicks land off-target and
+    the episode scores 0 without raising, so pin all three together.
+    """
+
+    @pytest.fixture(scope="class")
+    def args(self):
+        return agent_args(GEMMA_COORDS)
+
+    def test_observation_is_screenshot_only_without_marks(self, args):
+        assert args.use_screenshot
+        assert not args.save_som, "this config measures raw pixel grounding"
+        assert not args.use_axtree
+        assert not args.use_html
+
+    def test_action_space_is_coordinate_based(self, args):
+        assert "mouse_click" in executable_actions(args)
+        assert "click" not in executable_actions(args), "bid actions would be unusable without marks"
+
+    def test_coord_scale_matches_the_grid_declared_in_the_prompt(self, args):
+        assert args.coord_scale == 1000
+        assert "1000x1000" in args.prompt_txt.system_prompt
+
+    def test_coord_scale_reaches_the_action_parser(self, args):
+        agent = args.make_agent()
+        assert agent.action_parser.coord_scale == 1000
+
+    def test_model_coordinates_are_converted_to_viewport_pixels(self, args):
+        """End-to-end: a grid coordinate must come out as a viewport pixel."""
+        parser = args.make_agent().action_parser
+        response = "<think>t</think><action>mouse_click(x=500, y=500)</action>"
+        # 1280x800 is the screenshot env preset this config is paired with.
+        out = parser.parse(response, viewport=(1280, 800))
+        assert out["action"] == "mouse_click(x=640, y=400)"
+
+    def test_every_advertised_action_is_executable(self, args):
+        prompt = args.prompt_txt.action_prompt
+        runnable = executable_actions(args)
+        advertised = {
+            line.split("(")[0].strip()
+            for line in prompt.splitlines()
+            if "(" in line and not line.startswith(" ") and not line.startswith("-")
+        }
+        assert advertised, "could not extract any action names from action_prompt"
+        assert advertised <= runnable, (
+            f"action_prompt advertises {sorted(advertised - runnable)}, which "
+            f"the action set cannot execute (runnable: {sorted(runnable)})"
+        )
+
+    def test_temperature_is_deterministic(self, args):
+        assert args.temperature == 0
 
 
 class TestScreenshotEnvArgs:

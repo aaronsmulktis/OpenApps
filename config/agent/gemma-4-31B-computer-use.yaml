@@ -3,10 +3,14 @@
 # The model sees ONLY the screenshot (no AXTree, no HTML), but the screenshot is
 # annotated with numbered boxes (save_som: true -> ObsFlags.use_som), so it can
 # target elements by bid instead of by pixel coordinate. Gemma is not trained
-# for pixel-precise GUI grounding the way UI-TARS is, and nothing in this stack
-# rescales coordinates for it (the default "uitars" action_parser passes raw
-# pixels straight through), so reading a printed bid off the image is the
-# reliable path. Pair with: browsergym_env_args=screenshot
+# for pixel-precise GUI grounding the way UI-TARS is, so reading a printed bid
+# off the image is the reliable path.
+#
+# The coordinate-mode counterpart is gemma-4-31B-coords.yaml, which declares a
+# 1000x1000 grid and sets coord_scale to convert it to viewport pixels. Run
+# both to compare; this one is the safer default.
+#
+# Pair with: browsergym_env_args=screenshot
 defaults:
   - default
   - _self_
