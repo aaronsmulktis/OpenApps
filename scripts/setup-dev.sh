@@ -27,8 +27,24 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 
+has_internal_remote=0
+git remote get-url internal >/dev/null 2>&1 && has_internal_remote=1
+
+# int/* refs present locally, with or without the remote. Checked separately
+# because a clone can hold internal commits without having the remote wired up
+# — after `git remote remove internal`, or a clone-of-a-clone. .githooks/pre-push
+# arms itself on either condition, so this script has to report on both or it
+# tells people the opposite of what the hook will do.
+has_int_refs=0
+[ -n "$(git for-each-ref --count=1 --format='%(refname)' \
+            refs/heads/int refs/remotes/internal/int 2>/dev/null)" ] && has_int_refs=1
+
+# "This clone can hold internal content" — the condition that makes the merge
+# driver and the push guard load-bearing.
 has_internal=0
-git remote get-url internal >/dev/null 2>&1 && has_internal=1
+if [ "$has_internal_remote" = 1 ] || [ "$has_int_refs" = 1 ]; then
+    has_internal=1
+fi
 
 status=0
 
@@ -115,17 +131,27 @@ fi
 # ---------------------------------------------------------------------------
 echo
 echo "clone shape"
-if [ "$has_internal" = 1 ]; then
+if [ "$has_internal_remote" = 1 ]; then
     warn "hybrid clone: public and internal remotes both configured"
     echo "      the push guard is the only thing standing between an int/*"
     echo "      commit and a public remote. Keep internal work on int/* ."
+elif [ "$has_int_refs" = 1 ]; then
+    # The dangerous shape: internal commits are here, but the remote that would
+    # accept them is not, so every configured remote is a public one.
+    warn "int/* refs present with no internal remote"
+    echo "      this clone holds internal commits and every remote it has is"
+    echo "      public. Add the internal remote, or drop the int/* refs."
+else
+    ok "public-only clone — no internal remote, no int/* refs"
+fi
+
+if [ "$has_internal" = 1 ]; then
     if git rev-parse --verify --quiet refs/remotes/internal/int/main >/dev/null; then
         ok "int/main topology present"
     else
-        warn "no int/* branches yet — lineage and content checks are inactive"
+        warn "int/main not fetched — lineage and content checks are inactive"
+        echo "      run: git fetch internal"
     fi
-else
-    ok "public-only clone — nothing internal can leak from here"
 fi
 
 # ---------------------------------------------------------------------------
