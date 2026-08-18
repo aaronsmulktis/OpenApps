@@ -210,6 +210,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
             printf '%s\n' "$offenders" | head -20 | while read -r c; do
                 printf '    %s\n' "$(git log -1 --format='%h %s' "$c" </dev/null)" >&2
             done
+            # The common false positive, and the only one with a clean fix.
+            # Merging a public-safe branch into int/* before pushing it public
+            # makes its commits reachable from int/* , so they land in the taint
+            # set and this check refuses them -- even though they were always
+            # meant to go public. Pushing the source branch first drops them out
+            # of the set, because "already public" is subtracted from it.
+            printf '\n  If these were meant to be public, they were merged into int/* before\n' >&2
+            printf '  being pushed. Push the branch they came from to a public remote first,\n' >&2
+            printf '  then retry -- that removes them from the internal-only set.\n' >&2
+            printf '  Order matters: public remote first, merge into int/* second.\n' >&2
             failed=1
             continue
         fi

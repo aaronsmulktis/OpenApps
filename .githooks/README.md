@@ -49,6 +49,16 @@ with `git fetch internal`.
 Failures report commit SHAs and a pattern *index* — never the matched text or
 the pattern itself, since that output ends up in scrollback and pasted logs.
 
+### Ordering rule
+
+Push public-safe work to a public remote **before** merging it into `int/*`.
+
+Check 2's taint set is "reachable from `int/*`, minus already public". Merging a
+branch into `int/*` first puts its commits in that set, and the check then
+refuses the very push that would have made them public. Pushing in the other
+order subtracts them out and everything proceeds. The hook says this when it
+fires, but the order is easier to remember than the recovery.
+
 ### Limits
 
 - `git push --no-verify` bypasses everything.
