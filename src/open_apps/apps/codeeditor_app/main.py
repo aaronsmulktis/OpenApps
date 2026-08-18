@@ -125,6 +125,16 @@ def set_environment(config):
     textarea_background_color = getattr(config.code_editor, 'textarea_background_color', '#2d2d2d')
     # grey 900 background as default
     main_background_color = getattr(config.code_editor, 'main_background_color', '#1a202c')
+    # Optional, added for the VS Code-style presets. All fall back to values
+    # derived from the old two-colour scheme so existing appearance yamls
+    # (default, dark_theme, colorblind_access, ...) render exactly as before.
+    sidebar_background_color = getattr(
+        config.code_editor, 'sidebar_background_color', main_background_color
+    )
+    border_color = getattr(config.code_editor, 'border_color', 'transparent')
+    accent_color = getattr(config.code_editor, 'accent_color', primary_color)
+    row_hover_color = getattr(config.code_editor, 'row_hover_color', 'rgba(255,255,255,0.08)')
+    row_active_color = getattr(config.code_editor, 'row_active_color', accent_color)
 
     env_styles = Style(
         f"""
@@ -133,6 +143,11 @@ def set_environment(config):
             --custom-font-family: {config.code_editor.font};
             --custom-font-color: {config.code_editor.fontcolor};
             --main-bg-color: {main_background_color};
+            --sidebar-bg-color: {sidebar_background_color};
+            --border-color: {border_color};
+            --accent-color: {accent_color};
+            --row-hover-color: {row_hover_color};
+            --row-active-color: {row_active_color};
         }}
         .main-content {{
             background-color: var(--main-bg-color);
@@ -169,6 +184,77 @@ def set_environment(config):
             color: var(--custom-font-color) !important;
             font-family: var(--custom-font-family); !important;
         }}
+
+        /* ---- Editor chrome -------------------------------------------
+           The sidebar and the editor pane both carry .main-content, so by
+           default they render as one undifferentiated slab. Giving the file
+           explorer its own surface and a divider is what makes the layout
+           read as "editor" at a glance. Inert for presets that do not set
+           sidebar_background_color, since it then equals the main colour. */
+        .sidebar {{
+            background-color: var(--sidebar-bg-color);
+            border-right: 1px solid var(--border-color);
+        }}
+        /* File and folder rows: a visible hit area with a real hover and a
+           clearly marked current file. Previously the only cue was Tailwind's
+           hover:bg-gray-700, which vanishes if the CDN is unreachable. */
+        .sidebar .file-row, .sidebar .folder-row {{
+            border-radius: 3px;
+            color: var(--custom-font-color);
+        }}
+        .sidebar .file-row:hover, .sidebar .folder-row:hover {{
+            background-color: var(--row-hover-color);
+        }}
+        .sidebar .file-row.is-current {{
+            background-color: var(--row-active-color);
+        }}
+        .sidebar a {{
+            color: inherit;
+            text-decoration: none;
+            display: block;
+            width: 100%;
+        }}
+        #editor, .CodeMirror {{
+            border: 1px solid var(--border-color);
+            font-family: var(--custom-font-family), monospace;
+            font-size: var(--custom-font-size);
+        }}
+
+        /* ---- Local (CDN-free) editor themes ---------------------------
+           With code_editor.highlight off there is no CodeMirror on the page,
+           so the theme selector used to call a no-op shim. These classes let
+           the shim restyle the textarea instead, which means theme swapping
+           works on an air-gapped node. CodeMirror overrides these when
+           highlight is on. */
+        textarea#editor.theme-vscode-dark {{ background-color: #1e1e1e; color: #d4d4d4; }}
+        textarea#editor.theme-vscode-light {{ background-color: #ffffff; color: #1f1f1f; }}
+        textarea#editor.theme-monokai {{ background-color: #272822; color: #f8f8f2; }}
+        textarea#editor.theme-solarized {{ background-color: #002b36; color: #93a1a1; }}
+        textarea#editor.theme-high-contrast {{ background-color: #000000; color: #ffffff; }}
+
+        /* ---- Layout fallback ------------------------------------------
+           Tailwind, DaisyUI and CodeMirror are all CDN fetches. On a host
+           without egress none of them arrive and the page collapses to
+           unstyled HTML — no sidebar, no widths, no spacing. These few rules
+           reproduce only the layout utilities this app actually relies on,
+           using Tailwind's own values, so the page is identical whether or
+           not the CDN resolved. */
+        .flex {{ display: flex; }}
+        .items-center {{ align-items: center; }}
+        .justify-between {{ justify-content: space-between; }}
+        .justify-center {{ justify-content: center; }}
+        .w-1\\/6 {{ width: 16.666667%; }}
+        .w-5\\/6 {{ width: 83.333333%; }}
+        .p-4 {{ padding: 1rem; }}
+        .pl-2 {{ padding-left: 0.5rem; }}
+        .pl-4 {{ padding-left: 1rem; }}
+        .py-1 {{ padding-top: 0.25rem; padding-bottom: 0.25rem; }}
+        .ml-2 {{ margin-left: 0.5rem; }}
+        .mt-4 {{ margin-top: 1rem; }}
+        .rounded-lg {{ border-radius: 0.5rem; }}
+        .overflow-y-auto {{ overflow-y: auto; }}
+        .cursor-pointer {{ cursor: pointer; }}
+        body {{ background-color: var(--main-bg-color); }}
     """
     )
     app.config = config
@@ -219,23 +305,40 @@ def editor_binding(options_js: str) -> str:
     operator, which bound ``editor`` to the *options object*. Every
     ``editor.getValue()`` then threw a TypeError, so the Save button silently
     did nothing: no POST, no reload, no error modal.
+
+    ``setOption`` used to be a no-op, which is why the theme selector appeared
+    to do nothing whenever highlight was off (its default). It now applies the
+    local ``theme-*`` classes defined in ``set_environment``'s stylesheet, so
+    theme swapping works without reaching CodeMirror's CDN.
     """
     if app.config.code_editor.highlight:
         return (
             "var editor = CodeMirror.fromTextArea(document.getElementById('editor'), "
             f"{options_js});"
         )
+    initial_theme = getattr(app.config.code_editor, "theme", "") or ""
     return """
                     var editorTextarea = document.getElementById('editor');
+                    function applyLocalTheme(name) {
+                        if (!editorTextarea) { return; }
+                        editorTextarea.className = editorTextarea.className
+                            .split(/\\s+/)
+                            .filter(function(c) { return c && c.indexOf('theme-') !== 0; })
+                            .join(' ');
+                        if (name) { editorTextarea.classList.add('theme-' + name); }
+                    }
+                    applyLocalTheme('%s');
                     var editor = {
                         getValue: function() { return editorTextarea.value; },
                         setValue: function(value) { editorTextarea.value = value; },
                         getOption: function() { return null; },
-                        setOption: function() {},
+                        setOption: function(name, value) {
+                            if (name === 'theme') { applyLocalTheme(value); }
+                        },
                         setSize: function() {},
                         refresh: function() {},
                         focus: function() { editorTextarea.focus(); }
-                    };"""
+                    };""" % initial_theme
 
 
 def get_file_tree(path: str) -> Dict:
@@ -272,7 +375,12 @@ def create_sidebar(current_path: str = None) -> Div:
             file_path = item['path']
             is_current = current_path == file_path
             return Div(
-                cls=f"pl-4 py-1 hover:bg-gray-700 cursor-pointer {'bg-blue-800' if is_current else ''}"
+                # Colours come from the inline stylesheet, not Tailwind: the
+                # CDN injects its rules at runtime and would otherwise win the
+                # cascade, making the editor look different on a host with
+                # egress than on one without.
+                cls=f"file-row pl-4 py-1 cursor-pointer "
+                    f"{'is-current' if is_current else ''}"
             )(
                 A(
                     item['name'],
@@ -290,7 +398,7 @@ def create_sidebar(current_path: str = None) -> Div:
             return Div(cls="folder-container")(
                 # Merge span elements into a single clickable div
                 Div(
-                    cls=f"flex items-center pl-2 py-1 hover:bg-gray-700 cursor-pointer {('bg-blue-800' if is_current else '')}",
+                    cls=f"folder-row flex items-center pl-2 py-1 cursor-pointer {('is-current' if is_current else '')}",
                     **{
                         "data-path": folder_path,
                         "onclick": f"""
@@ -334,7 +442,7 @@ def create_sidebar(current_path: str = None) -> Div:
     else:
         folder_path = current_path
     return Div(
-        cls="main-content w-1/6 p-4 rounded-lg overflow-y-auto",
+        cls="sidebar main-content w-1/6 p-4 rounded-lg overflow-y-auto",
         style="max-height: calc(100vh - 2rem)"
     )(
         Div(cls="mb-4")(

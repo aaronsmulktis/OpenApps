@@ -1,5 +1,7 @@
 defaults:
   - content: default
-  - appearance: default
+  # VS Code Dark+. The old low-contrast light-blue scheme is still available
+  # as apps/code_editor/appearance=default.
+  - appearance: vscode_dark
 
 database_path: ${databases_dir}/codeeditor
