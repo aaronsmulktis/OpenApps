@@ -45,10 +45,17 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # These two paths exist only on int/* branches by design. Their
+          # These paths exist only on int/* branches by design. Their
           # appearance in a public PR means a branch crossed the boundary.
+          #
+          #   .gitattributes           pins which paths deliberately differ
+          #   .githooks/patterns.txt   the internal-content pattern list
+          #   internal/                internal-only docs and notes
+          #
+          # Keep this list in step with the "internal-only files" table in
+          # internal/README.md, which is the copy people actually read.
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-          bad=$(printf '%s\n' "$changed" | grep -E '^(\.gitattributes|\.githooks/patterns\.txt)$' || true)
+          bad=$(printf '%s\n' "$changed" | grep -E '^(\.gitattributes|\.githooks/patterns\.txt|internal/.*)$' || true)
           if [ -n "$bad" ]; then
             echo "::error::PR touches internal-only paths:"
             printf '%s\n' "$bad"

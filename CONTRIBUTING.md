@@ -15,6 +15,21 @@ so this step cannot be automated away.
 
 Verify at any point with `./scripts/setup-dev.sh --check`.
 
+If you have no `internal` remote configured, this is close to a no-op — the
+push guard has nothing to guard and stays out of your way.
+
+## Branch naming
+Branch names beginning with `int/` are reserved. Pushes of `int/*` refs to this
+repository are rejected server-side, and pull requests opened from an `int/*`
+head branch fail CI.
+
+The Meta research group maintains cluster-specific configuration on branches in
+that namespace. Reserving the prefix is what lets those branches carry a file at
+the *same path* as its public counterpart — `config/mode/slurm_cluster.yaml`,
+for instance — instead of renaming files or maintaining a parallel checkout.
+None of that affects contributing here: work from `main`, name your branch
+anything that isn't `int/*`, and you will never encounter these checks.
+
 ## Pull Requests
 We actively welcome your pull requests.
 
