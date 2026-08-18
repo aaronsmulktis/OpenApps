@@ -1,7 +1,40 @@
 defaults:
   - content: default
-  # VS Code Dark+. The old low-contrast light-blue scheme is still available
-  # as apps/code_editor/appearance=default.
-  - appearance: vscode_dark
+  # Legacy appearance group. It still supplies the editor's non-colour
+  # settings (font size, highlight, modes); all colours and fonts now come
+  # from the shared design tokens in config/apps/theme/.
+  - appearance: default
 
 database_path: ${databases_dir}/codeeditor
+
+# Serve the editor with no third-party CDN fetches at all (pico, Tailwind,
+# DaisyUI, CodeMirror). The inline design tokens, layout fallbacks and base
+# control styling cover everything the app uses.
+#
+# Left off by default only because flipping it changes the look on a host that
+# *does* have egress, and that wants a visual check first. On an air-gapped
+# node those fetches already fail silently, so turning this on there costs
+# nothing and makes rendering deterministic:
+#   apps.code_editor.no_egress=true
+no_egress: false
+
+# Design theme for this app, resolved by open_apps.theme.resolve_theme. Set
+# per-app so the editor can be VS Code dark without restyling every other
+# app; use `apps/theme=vscode_dark` to change the global default instead.
+#
+# This key doubles as CodeMirror's theme name when code_editor.highlight is
+# on. That is deliberate -- one selector, one concept -- but it means a
+# design-theme name has no matching CodeMirror stylesheet, so syntax colours
+# fall back to CodeMirror's default. The design tokens still restyle the
+# surrounding chrome and the editor surface.
+theme: vscode_dark
+
+# The design themes offered by the in-editor selector. Each must exist as
+# config/apps/theme/<name>.yaml.
+list_of_themes:
+  - vscode_dark
+  - default
+  - dark
+  - solarized
+  - material
+  - mono
