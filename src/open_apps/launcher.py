@@ -302,6 +302,23 @@ class AgentLauncher(OpenAppsLauncher):
         cum_reward = float(exp_record.get("cum_reward") or 0.0)
         wandb.run.summary["cum_reward"] = cum_reward
         wandb.run.summary["success"] = int(cum_reward >= 1.0)
+        steps_info = exp_result.steps_info
+
+        def action_error(i: int) -> str:
+            """BrowserGym's ``last_action_error`` for the action taken at step ``i``.
+
+            An observation describes the state *after* the preceding action, so
+            the error raised by ``steps_info[i].action`` lands in
+            ``steps_info[i + 1].obs``, not in step ``i``'s own obs. Without
+            this shift the column would blame each failure on the next action.
+            The final step has no successor (the loop ended), so its action —
+            if any — has no recorded outcome.
+            """
+            if i + 1 >= len(steps_info):
+                return ""
+            next_obs = steps_info[i + 1].obs
+            return str(next_obs.get("last_action_error", "") if next_obs else "")
+
         actions_data = [
             [
                 i,
@@ -312,12 +329,23 @@ class AgentLauncher(OpenAppsLauncher):
                     if step_info.agent_info
                     else None
                 ),
+                # Whether the environment actually accepted the action. Agents
+                # routinely narrate success in `think` for a click that never
+                # landed, so without this the table reads as a win either way.
+                action_error(i),
             ]
-            for i, step_info in enumerate(exp_result.steps_info)
+            for i, step_info in enumerate(steps_info)
         ]
 
         actions_table = wandb.Table(
-            data=actions_data, columns=["step", "action", "open_pages_urls", "think"]
+            data=actions_data,
+            columns=[
+                "step",
+                "action",
+                "open_pages_urls",
+                "think",
+                "last_action_error",
+            ],
         )
         wandb.log({"actions": actions_table})
         print("logging screenshots to wandb")
