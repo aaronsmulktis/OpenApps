@@ -63,19 +63,43 @@ die()  { printf '\n\033[31mpre-push: %s\033[0m\n\n' "$1" >&2; exit 1; }
 note() { printf 'pre-push: %s\n' "$1" >&2; }
 
 # ---------------------------------------------------------------------------
+# THE GUARDED NAMESPACES
+#
+# int/*      canonical. The trunk is int/main; that is where patterns.txt lives
+#            and what the topology checks look for.
+# internal/* alias, blocked identically but NOT canonical. It exists only
+#            because this repo has an internal/ directory, which makes
+#            `internal/my-work` the most likely wrong guess at the branch name.
+#            An unguarded near-miss is worse than a second guarded spelling.
+#
+# Bare `int` and `internal` are included too. Git cannot hold both `int` and
+# `int/x` at once (directory/file conflict), so in practice a repo has one or
+# the other.
+#
+# Deliberately NOT guarded: int-x, internal-x. Those are not namespaces, and
+# widening to them would swallow ordinary branch names — this repo already has
+# aaronsmulktis/internal-guard, which must stay pushable.
+#
+# These two lists must agree with each other, with .githooks/commit-msg, with
+# .github/workflows/guard-internal.yml, and with the ruleset JSON.
+# ---------------------------------------------------------------------------
+guarded_heads='refs/heads/int refs/heads/internal'
+guarded_remote='refs/remotes/internal/int refs/remotes/internal/internal'
+
+# ---------------------------------------------------------------------------
 # Step 0 — is this clone internal-aware at all?
 #
-# A clone with neither an `internal` remote nor any int/* ref cannot contain
+# A clone with neither an `internal` remote nor any guarded ref cannot contain
 # internal commits, so there is nothing to guard. Public contributors are never
 # blocked, warned, or prompted for setup they don't need.
 #
 # Both conditions, not just the remote: testing only for the remote left a hole
-# where `git remote remove internal` silently disarmed the hook while int/*
+# where `git remote remove internal` silently disarmed the hook while internal
 # branches were still sitting in the object store.
 # ---------------------------------------------------------------------------
 if ! git remote get-url internal >/dev/null 2>&1 && [ -z "$(
         git for-each-ref --count=1 --format='%(refname)' \
-            refs/heads/int refs/remotes/internal/int 2>/dev/null)" ]; then
+            $guarded_heads $guarded_remote 2>/dev/null)" ]; then
     exit 0
 fi
 
@@ -111,14 +135,14 @@ done
 # ---------------------------------------------------------------------------
 # Step 2 — build the taint set (check 2's backing data)
 #
-# Internal-only commits = reachable from an int/* ref, minus anything already
+# Internal-only commits = reachable from a guarded ref, minus anything already
 # public. The subtraction is what makes this safe against the current state of
 # the `internal` remote, which still mirrors the public branches: those shared
 # commits are reachable from origin/upstream too, so they fall out here rather
 # than generating false positives.
 # ---------------------------------------------------------------------------
 internal_refs=$(git for-each-ref --format='%(refname)' \
-                    refs/heads/int refs/remotes/internal/int 2>/dev/null | tr '\n' ' ')
+                    $guarded_heads $guarded_remote 2>/dev/null | tr '\n' ' ')
 
 taint="$tmpdir/taint"
 : > "$taint"
@@ -187,8 +211,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     case "$local_sha" in *[!0]*) ;; *) continue ;; esac
 
     # --- Check 1: ref name -------------------------------------------------
+    # Both guarded namespaces; see "THE GUARDED NAMESPACES" at the top.
     case "$local_ref" in
-        refs/heads/int|refs/heads/int/*)
+        refs/heads/int|refs/heads/int/*|refs/heads/internal|refs/heads/internal/*)
             banner "$local_ref" "$remote_ref"
             printf '  internal branch pushed to a public remote\n' >&2
             failed=1

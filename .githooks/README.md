@@ -16,13 +16,32 @@ exclusive — `pre-commit install` refuses to run when `core.hooksPath` is set.
 If this repo later adopts `pre-commit` for linting and formatting, that
 decision needs to be made deliberately.
 
+## Guarded branch names
+
+`int`, `int/*`, `internal`, `internal/*`.
+
+`int/*` is canonical — the trunk is `int/main`, and that is where
+`patterns.txt` is read from. `internal/*` is an alias that is blocked
+identically but is not a second trunk; it exists because this repo has an
+`internal/` directory, which makes `internal/my-work` the likeliest wrong guess
+at a branch name, and an unguarded near-miss is worse than a second spelling.
+
+`int-*` and `internal-*` are **not** guarded. They aren't namespaces, and
+matching them would swallow ordinary branches — `aaronsmulktis/internal-guard`
+has to stay pushable.
+
+This list is repeated in four places that must agree: the `guarded_heads` /
+`guarded_remote` variables in `pre-push`, the `case` in `commit-msg`, the `case`
+in `.github/workflows/guard-internal.yml`, and `ref_name.include` in the ruleset
+JSON.
+
 ## `pre-push`
 
 Blocks internal-only commits from reaching a public remote. Three checks:
 
 | # | Check | Catches | Active |
 |---|-------|---------|--------|
-| 1 | Ref name | Pushing an `int/*` branch to a public remote | Immediately |
+| 1 | Ref name | Pushing an internal branch to a public remote | Immediately |
 | 2 | Lineage | Internal commits, including edits to *shared* files | After the `int/*` rename |
 | 3 | Content | Internal content hand-copied onto a public branch | Once `patterns.txt` exists |
 

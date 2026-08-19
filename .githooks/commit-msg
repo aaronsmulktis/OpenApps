@@ -16,9 +16,11 @@
 
 set -u
 
+# Both guarded namespaces — see "THE GUARDED NAMESPACES" in .githooks/pre-push.
+# internal/* is the blocked alias, not a second canonical trunk.
 branch=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
 case "$branch" in
-    int|int/*) ;;
+    int|int/*|internal|internal/*) ;;
     *) exit 0 ;;
 esac
 

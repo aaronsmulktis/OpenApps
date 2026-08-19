@@ -30,14 +30,18 @@ warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 has_internal_remote=0
 git remote get-url internal >/dev/null 2>&1 && has_internal_remote=1
 
-# int/* refs present locally, with or without the remote. Checked separately
+# Guarded refs present locally, with or without the remote. Checked separately
 # because a clone can hold internal commits without having the remote wired up
 # — after `git remote remove internal`, or a clone-of-a-clone. .githooks/pre-push
 # arms itself on either condition, so this script has to report on both or it
 # tells people the opposite of what the hook will do.
+#
+# Namespace list must match "THE GUARDED NAMESPACES" in .githooks/pre-push.
 has_int_refs=0
 [ -n "$(git for-each-ref --count=1 --format='%(refname)' \
-            refs/heads/int refs/remotes/internal/int 2>/dev/null)" ] && has_int_refs=1
+            refs/heads/int refs/heads/internal \
+            refs/remotes/internal/int refs/remotes/internal/internal \
+            2>/dev/null)" ] && has_int_refs=1
 
 # "This clone can hold internal content" — the condition that makes the merge
 # driver and the push guard load-bearing.

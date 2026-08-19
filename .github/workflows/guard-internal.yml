@@ -28,12 +28,16 @@ jobs:
 
       # Branch names on a fork PR are attacker-controlled, so every value below
       # crosses into the shell through env rather than ${{ }} interpolation.
-      - name: Reject int/* head branches
+      - name: Reject internal head branches
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
+          # Both guarded namespaces; see "THE GUARDED NAMESPACES" in
+          # .githooks/pre-push. int-* and internal-* are deliberately allowed —
+          # they are not namespaces, and blocking them would catch ordinary
+          # branch names like aaronsmulktis/internal-guard.
           case "$HEAD_REF" in
-            int|int/*)
+            int|int/*|internal|internal/*)
               echo "::error::Head branch '$HEAD_REF' is an internal branch and cannot be merged to a public branch."
               exit 1
               ;;

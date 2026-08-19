@@ -15,8 +15,14 @@
     "Keep bypass_actors empty. An admin bypass would defeat the point, since",
     "the people most likely to hold int/* branches locally are the admins.",
     "",
-    "Does NOT belong on fairinternal/openapps-internal — int/* is exactly what",
-    "that repo is for."
+    "int/* is canonical; internal/* is a blocked alias, present because this",
+    "repo has an internal/ directory and `internal/my-work` is the likeliest",
+    "wrong guess at the branch name. int-* and internal-* are NOT included:",
+    "they are not namespaces, and blocking them would catch ordinary branches",
+    "such as aaronsmulktis/internal-guard.",
+    "",
+    "Does NOT belong on fairinternal/openapps-internal — those branches are",
+    "exactly what that repo is for."
   ],
   "name": "block-internal-refs",
   "target": "branch",
@@ -26,7 +32,9 @@
     "ref_name": {
       "include": [
         "refs/heads/int",
-        "refs/heads/int/**"
+        "refs/heads/int/**",
+        "refs/heads/internal",
+        "refs/heads/internal/**"
       ],
       "exclude": []
     }
