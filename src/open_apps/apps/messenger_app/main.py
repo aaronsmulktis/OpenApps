@@ -11,6 +11,7 @@ import random
 import ast
 import json
 from src.open_apps.apps.start_page.helper import create_logo_header
+from src.open_apps.frontend import local_hdrs
 
 
 @dataclass
@@ -253,8 +254,11 @@ _base_chat_script = (
     """)
 )
 _base_hdrs = (
-    picolink,
-    Script(src="https://unpkg.com/htmx.org@1.9.10"),  # Add this line if not present
+    # Pico and htmx served from apps/assets/vendor rather than a CDN. This app
+    # previously loaded picolink (Pico from jsdelivr) plus htmx 1.9.10 from
+    # unpkg, on top of the htmx 2.0.4 FastHTML injects by default -- two htmx
+    # versions racing on a page, both of which vanish on an offline host.
+    *local_hdrs(),
     Script(src="https://cdn.tailwindcss.com"),
     Link(
         rel="stylesheet",
@@ -266,7 +270,7 @@ _base_hdrs = (
     ),
     _base_chat_script,
 )
-app = FastHTML(hdrs=_base_hdrs, cls="p-4 max-w-lg mx-auto")
+app = FastHTML(hdrs=_base_hdrs, cls="p-4 max-w-lg mx-auto", default_hdrs=False)
 
 
 def set_environment(config):

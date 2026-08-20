@@ -12,6 +12,7 @@ from fasthtml.common import (
     Ul, Li, Hr, Article, Button, RedirectResponse, Container, MarkdownJS,
     HighlightJS, database, dataclass)
 from datetime import datetime, timedelta
+from src.open_apps.frontend import local_hdrs
 import calendar
 import os
 import logging
@@ -185,8 +186,9 @@ styles = Style("")
 
 
 app, rt = fast_app(
-    pico=True,
+    default_hdrs=False,
     hdrs=(
+        *local_hdrs(),
         MarkdownJS(),
         HighlightJS(langs=["python", "javascript", "html", "css"]),
         Script(src="https://unpkg.com/@phosphor-icons/web"),

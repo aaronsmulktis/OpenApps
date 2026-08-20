@@ -9,6 +9,7 @@ from dataclasses import dataclass
 import json
 from typing import List
 from src.open_apps.apps.start_page.helper import create_logo_header
+from src.open_apps.frontend import local_hdrs
 
 
 @dataclass
@@ -18,7 +19,7 @@ class Todo:
     done: bool
 
 
-app, rt = fast_app()
+app, rt = fast_app(default_hdrs=False, hdrs=local_hdrs())
 logo_title_container = None
 styles = Style("")
 

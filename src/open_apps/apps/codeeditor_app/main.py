@@ -11,10 +11,12 @@ from typing import Dict
 import json
 from starlette.responses import Response
 from src.open_apps.apps.start_page.helper import create_logo_header
+from src.open_apps.frontend import local_hdrs
 
 # Global variables
 _base_hdrs_no_highlight = (
-    picolink,
+    # Pico + htmx from apps/assets/vendor, not jsdelivr (see frontend.py).
+    *local_hdrs(),
     Script(src="https://cdn.tailwindcss.com"),
     Link(
         rel="stylesheet",
@@ -33,7 +35,7 @@ opened_files = {}
 logo_title_container = None
 
 # Initialize app with default headers
-app = FastHTML(hdrs=_base_hdrs, cls="p-4")
+app = FastHTML(hdrs=[*local_hdrs(), *_base_hdrs], cls="p-4", default_hdrs=False)
 
 import yaml
 import os
@@ -91,7 +93,8 @@ def set_environment(config):
     update_db_from_hydra(config)
     print(f"- Code editor filesystem created under {current_dir}")
     _base_hdrs_with_highlight = (
-        picolink,
+        # Pico + htmx from apps/assets/vendor, not jsdelivr (see frontend.py).
+        *local_hdrs(),
         Script(src="https://cdn.tailwindcss.com"),
         Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/daisyui@4.11.1/dist/full.min.css"),
         Link(rel="stylesheet", href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css"),
