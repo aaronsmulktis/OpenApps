@@ -11,7 +11,7 @@ import random
 import ast
 import json
 from src.open_apps.apps.start_page.helper import create_logo_header
-from src.open_apps.frontend import local_hdrs
+from open_apps.frontend import local_hdrs
 
 
 @dataclass
