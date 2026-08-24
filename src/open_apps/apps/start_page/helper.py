@@ -10,6 +10,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from open_apps.frontend import local_hdrs
+
 # src/proficiency_playground/playground_server
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -598,7 +600,13 @@ def get_app(hdrs=None, *args, **kwargs):
             href="/assets/css/main.css",
         )
     )
-    app = FastHTML(hdrs=hdrs, *args, **kwargs)
+    # This is the app that actually serves every route -- the other apps' routes
+    # are mounted onto it -- so its headers are what the browser sees. htmx and
+    # Pico come from apps/assets/vendor via the static route below rather than
+    # from jsdelivr; default_hdrs=False is what stops FastHTML prepending the
+    # CDN copies. See src/open_apps/frontend.py for why that matters.
+    hdrs = local_hdrs() + hdrs
+    app = FastHTML(hdrs=hdrs, *args, default_hdrs=False, **kwargs)
 
     @app.get("/{fname:path}.{ext:static}")
     def static(fname: str, ext: str):
