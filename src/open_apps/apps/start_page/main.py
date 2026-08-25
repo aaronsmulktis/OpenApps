@@ -37,6 +37,7 @@ except ImportError:
 from omegaconf import DictConfig, OmegaConf
 
 from open_apps.theme import theme_style
+from open_apps.wallpaper import ensure_wallpaper
 from open_apps.ui import (
     AppTile,
     Clock,
@@ -46,6 +47,7 @@ from open_apps.ui import (
     Text,
     Toolbar,
     WeatherChip,
+    Wordmark,
     component_styles,
 )
 
@@ -422,6 +424,18 @@ def render_desktop_shell(config):
     theme_name = {"light": "meta", "dark": "meta_dark"}.get(mode)
     theme_cfg = OmegaConf.create({"theme": theme_name}) if theme_name else app.config
 
+    # Resolve the wallpaper. Returns None if every backend failed, in which
+    # case we set no custom property and the CSS gradient fallback applies.
+    wallpaper_cfg = desktop_cfg.get("wallpaper", {}) or {}
+    shell_style = None
+    if wallpaper_cfg.get("enabled", True):
+        url = ensure_wallpaper(
+            variant=int(wallpaper_cfg.get("variant", 0)),
+            force=bool(wallpaper_cfg.get("regenerate", False)),
+        )
+        if url:
+            shell_style = f"--ui-wallpaper:url('{url}');"
+
     apps = _enabled_apps(config)
     launcher_items = [
         LauncherItem(
@@ -450,7 +464,7 @@ def render_desktop_shell(config):
         Toolbar(
             left=[
                 LauncherMenu(*launcher_items, open=_desktop_state["launcher_open"]),
-                Text(config.get("headline", "OpenApps"), variant="body"),
+                Div(Wordmark(height=22), cls="ui-brand"),
             ],
             right=[
                 WeatherChip(weather.get("condition", "clear"), weather.get("temperature", "")),
@@ -459,13 +473,14 @@ def render_desktop_shell(config):
             ],
         ),
         Div(
-            Div(*tiles, cls="ui-tile-grid", data_testid="desktop-tiles")
+            Div(*tiles, cls="ui-tile-dock", data_testid="desktop-tiles")
             if tiles
             else Text("Nothing pinned yet. Open the launcher to pin an app.", variant="caption"),
             cls="ui-desktop-surface",
         ),
         id="desktop-shell",
         cls="ui-desktop",
+        style=shell_style,
         data_mode=mode,
         data_pinned=",".join(pinned),
     )
