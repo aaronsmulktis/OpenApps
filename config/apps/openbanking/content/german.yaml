@@ -1,0 +1,118 @@
+# @package apps.openbanking
+defaults:
+  - default
+
+# Chrome and transaction descriptions are translated. Two things deliberately
+# are *not*: the account names (they are product names, and tasks address
+# accounts by them) and every numeric amount/balance. Tasks score on figures
+# read out of this ledger, so the numbers must be identical across every
+# content variant or the same task would need a different answer per language.
+nav_actions: ["Konto eröffnen"]
+sign_out_label: "Abmelden"
+accounts_heading: "Ihre Konten"
+back_to_accounts_label: "Zurück zu den Konten"
+
+available_balance_label: "Verfügbarer Saldo"
+present_balance_label: "Aktueller Saldo"
+available_credit_label: "Verfügbarer Kreditrahmen"
+available_plus_credit_label: "Verfügbar plus Kredit"
+account_number_label: "Kontonummer"
+routing_number_label: "Bankleitzahl"
+show_number_label: "Vollständige Nummer anzeigen"
+hide_number_label: "Nummer ausblenden"
+
+transactions_heading: "Umsätze"
+showing_label: "Anzeige"
+showing_options:
+  - "Alle Umsätze"
+  - "Eingänge"
+  - "Ausgänge"
+search_placeholder: "Umsätze durchsuchen"
+search_label: "Suchen"
+see_more_label: "Weitere Aktivitäten anzeigen"
+pending_label: "Ausstehend"
+no_results_label: "Keine Umsätze entsprechen Ihrer Suche."
+column_labels:
+  date: "Datum"
+  description: "Beschreibung"
+  type: "Art"
+  amount: "Betrag"
+  balance: "Saldo"
+
+accounts:
+  - name: "BUS COMPLETE CHK (...5555)"
+    holder: "Acme Industries GmbH"
+    account_number: "447109255555"
+    routing_number: "123456789"
+    available_balance: 6102.80
+    present_balance: 6102.80
+    available_credit: 0.00
+    transactions:
+      - date: null
+        description: "ECHTZEITÜBERWEISUNG ERHALTEN VON BLZ/GEGENBK-123 VON: PART CORP INC REF: 12345 INFO: TEXT-123 IID: 555 EING: 12:19:04 TRN: 123ABC BREF: 123ABC"
+        type: "Sonstige"
+        amount: 5000.00
+        balance: null
+      - date: "25. Aug. 2026"
+        description: "AUFTRAGGEBER:VENMO AUFTRAGS-ID:123 BUCHUNGSDATUM:260824 VERWENDUNGSZWECK:AUSZAHLUNG SEC:PPD BELEG#:123 EED:123 IND ID: IND NAME:ACMEIND TRN: 123ABC"
+        type: "SEPA-Gutschrift"
+        amount: 632.67
+        balance: 1102.80
+      - date: "24. Aug. 2026"
+        description: "GESCHÄFTSSOFTWARE BIZTOOL.COM TX 23.08. (...5432)"
+        type: "Karte"
+        amount: -323.36
+        balance: 470.13
+      - date: "24. Aug. 2026"
+        description: "COOL APPS INC. COOLAPP.COM MD 22.08. (...4321)"
+        type: "Karte"
+        amount: -1078.81
+        balance: 793.49
+
+  - name: "BUS SELECT SAVINGS (...8891)"
+    holder: "Northgate Supply GmbH"
+    account_number: "620833148891"
+    routing_number: "123456789"
+    available_balance: 24310.55
+    present_balance: 24310.55
+    available_credit: 0.00
+    transactions:
+      - date: "22. Aug. 2026"
+        description: "ÜBERTRAG VOM GIROKONTO ...5555"
+        type: "Überweisung"
+        amount: 2000.00
+        balance: 24310.55
+      - date: "01. Aug. 2026"
+        description: "ZINSGUTSCHRIFT"
+        type: "Zinsen"
+        amount: 18.42
+        balance: 22310.55
+      - date: "15. Juli 2026"
+        description: "ÜBERTRAG VOM GIROKONTO ...5555"
+        type: "Überweisung"
+        amount: 3500.00
+        balance: 22292.13
+
+  - name: "INK BUSINESS CARD (...2043)"
+    holder: "Cardinal Freight GmbH"
+    account_number: "915377602043"
+    routing_number: "123456789"
+    available_balance: 0.00
+    present_balance: -1284.19
+    available_credit: 8715.81
+    transactions:
+      - date: "23. Aug. 2026"
+        description: "CLOUD HOST LLC CLOUDHOST.IO WA 22.08. (...2043)"
+        type: "Karte"
+        amount: -412.00
+        balance: -1284.19
+      - date: "20. Aug. 2026"
+        description: "BÜROBEDARF CO OFFICESUP.COM NY 19.08. (...2043)"
+        type: "Karte"
+        amount: -212.44
+        balance: -872.19
+      - date: "18. Aug. 2026"
+        description: "ZAHLUNG - VIELEN DANK"
+        type: "Zahlung"
+        amount: 900.00
+        balance: -659.75

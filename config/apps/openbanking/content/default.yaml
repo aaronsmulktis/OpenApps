@@ -1,0 +1,137 @@
+# @package apps.openbanking
+title: ${apps.start_page.apps.openbanking.title}
+description: ${apps.start_page.apps.openbanking.description}
+
+# --- Masthead / chrome ------------------------------------------------------
+nav_actions: ["Open an account"]
+sign_out_label: "Sign out"
+accounts_heading: "Your accounts"
+back_to_accounts_label: "Back to accounts"
+
+# --- Account summary --------------------------------------------------------
+available_balance_label: "Available balance"
+present_balance_label: "Present balance"
+available_credit_label: "Available credit"
+available_plus_credit_label: "Available plus credit"
+# The two click-to-reveal figures in the account summary. The figure itself is
+# the control, so the show/hide strings are tooltips, not button captions.
+account_number_label: "Account number"
+routing_number_label: "Routing number"
+show_number_label: "Show full number"
+hide_number_label: "Hide number"
+
+# --- Transactions panel -----------------------------------------------------
+transactions_heading: "Transactions"
+showing_label: "Showing"
+# The first entry is the unfiltered default. `filter_*` keys below map the
+# remaining entries onto the predicate the app applies, so a translated
+# content variant can rename the options without the filter logic caring.
+showing_options:
+  - "All transactions"
+  - "Deposits"
+  - "Withdrawals"
+search_placeholder: "Search transactions"
+search_label: "Search"
+see_more_label: "See more activity"
+pending_label: "Pending"
+no_results_label: "No transactions match your search."
+column_labels:
+  date: "Date"
+  description: "Description"
+  type: "Type"
+  amount: "Amount"
+  balance: "Balance"
+
+# --- Seed data --------------------------------------------------------------
+# Balances are the ledger's own running balance as captured, not recomputed
+# from the amounts -- a real statement's running balance reflects postings the
+# visible window doesn't include, and inventing a self-consistent one would
+# make the app less representative, not more.
+#
+# `balance: null` renders as an em dash (pending items have no posted balance).
+#
+# The three accounts belong to three different businesses, so an agent cannot
+# assume one holder and must read the one it was asked about.
+#
+# `account_number` is masked in the UI down to its last four digits, which
+# match the digits in the account's display name -- revealing it should confirm
+# what the name already implied, not contradict it. `routing_number` is a
+# property of the bank, so all accounts share one. Both are quoted: they are
+# digit strings, not integers, and unquoted leading zeros would be eaten.
+accounts:
+  - name: "BUS COMPLETE CHK (...5555)"
+    holder: "Acme Industries, Inc"
+    account_number: "447109255555"
+    routing_number: "123456789"
+    available_balance: 6102.80
+    present_balance: 6102.80
+    available_credit: 0.00
+    transactions:
+      - date: null              # null date => rendered under `pending_label`
+        description: "REAL TIME TRANSFER RECD FROM ABA/CONTR BNK-123 FROM: PART CORP INC REF: 12345 INFO: TEXT-123 IID: 555 RECD: 12:19:04 TRN: 123ABC BREF: 123ABC"
+        type: "Other"
+        amount: 5000.00
+        balance: null
+      - date: "Aug 25, 2026"
+        description: "ORIG CO NAME:VENMO ORIG ID:123 DESC DATE:260824 CO ENTRY DESCR:CASHOUT SEC:PPD TRACE#:123 EED:123 IND ID: IND NAME:ACMEIND TRN: 123ABC"
+        type: "ACH credit"
+        amount: 632.67
+        balance: 1102.80
+      - date: "Aug 24, 2026"
+        description: "BUSINESS TOOL BIZTOOL.COM TX 08/23 (...5432)"
+        type: "Card"
+        amount: -323.36
+        balance: 470.13
+      - date: "Aug 24, 2026"
+        description: "COOL APPS INC. COOLAPP.COM MD 08/22 (...4321)"
+        type: "Card"
+        amount: -1078.81
+        balance: 793.49
+
+  - name: "BUS SELECT SAVINGS (...8891)"
+    holder: "Northgate Supply Co"
+    account_number: "620833148891"
+    routing_number: "123456789"
+    available_balance: 24310.55
+    present_balance: 24310.55
+    available_credit: 0.00
+    transactions:
+      - date: "Aug 22, 2026"
+        description: "TRANSFER FROM CHK ...5555"
+        type: "Transfer"
+        amount: 2000.00
+        balance: 24310.55
+      - date: "Aug 01, 2026"
+        description: "INTEREST PAYMENT"
+        type: "Interest"
+        amount: 18.42
+        balance: 22310.55
+      - date: "Jul 15, 2026"
+        description: "TRANSFER FROM CHK ...5555"
+        type: "Transfer"
+        amount: 3500.00
+        balance: 22292.13
+
+  - name: "INK BUSINESS CARD (...2043)"
+    holder: "Cardinal Freight LLC"
+    account_number: "915377602043"
+    routing_number: "123456789"
+    available_balance: 0.00
+    present_balance: -1284.19
+    available_credit: 8715.81
+    transactions:
+      - date: "Aug 23, 2026"
+        description: "CLOUD HOST LLC CLOUDHOST.IO WA 08/22 (...2043)"
+        type: "Card"
+        amount: -412.00
+        balance: -1284.19
+      - date: "Aug 20, 2026"
+        description: "OFFICE SUPPLY CO OFFICESUP.COM NY 08/19 (...2043)"
+        type: "Card"
+        amount: -212.44
+        balance: -872.19
+      - date: "Aug 18, 2026"
+        description: "PAYMENT THANK YOU"
+        type: "Payment"
+        amount: 900.00
+        balance: -659.75

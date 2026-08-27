@@ -1,0 +1,5 @@
+# @package apps.openbanking
+# Structure only -- no colors/fonts (those come from the shared theme).
+# `default` renders the transaction ledger as a five-column table
+# (Date / Description / Type / Amount / Balance).
+layout: default

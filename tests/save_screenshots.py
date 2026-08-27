@@ -54,6 +54,10 @@ ROUTES = (
     RouteSpec("messages", "/messages", "main a[href^='/messages/'], main"),
     RouteSpec("maps", "/maps", "#map"),
     RouteSpec("codeeditor", "/codeeditor/", "#editor"),
+    RouteSpec("openbanking", "/openbanking", ".ob-card"),
+    # The account detail page carries the summary figures and the ledger, so it
+    # is where a theme or layout regression actually shows up.
+    RouteSpec("openbanking_account", "/openbanking/accounts/0", ".ob-card"),
     RouteSpec("onlineshop", "/onlineshop/", "input[name='search_query']"),
     RouteSpec("onlineshop_electronics", "/onlineshop/search/electronics/1", ".card"),
     RouteSpec("onlineshop_fashion", "/onlineshop/search/fashion/1", ".card"),
@@ -63,7 +67,15 @@ ROUTES = (
 
 THEME_DIR = REPO_ROOT / "config" / "apps" / "theme"
 
-CONTENT_APPS = ("start_page", "todo", "calendar", "messenger", "maps", "code_editor")
+CONTENT_APPS = (
+    "start_page",
+    "todo",
+    "calendar",
+    "messenger",
+    "maps",
+    "code_editor",
+    "openbanking",
+)
 
 # Per-app structure variants worth a screenshot of their own. Themes are
 # captured separately (one variation per stem) because they are global -- a
