@@ -26,6 +26,7 @@ APP_URL_PATHS: dict[str, str] = {
     "messages": "/messages",
     "codeeditor": "/codeeditor/",
     "map": "/maps",
+    "openbanking": "/openbanking",
 }
 
 APP_CONFIG_DIRS: dict[str, str] = {
@@ -34,6 +35,7 @@ APP_CONFIG_DIRS: dict[str, str] = {
     "messages": "messenger",
     "codeeditor": "code_editor",
     "map": "maps",
+    "openbanking": "openbanking",
 }
 
 
