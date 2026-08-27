@@ -88,8 +88,8 @@ Or one app only, leaving the rest on the global theme:
 `uv run launch.py apps.calendar.theme=$THEME`.
 
 Shipped themes: `default`, `dark`, `mono`, `challenging_font`, `colorblind`,
-`solarized`, `material`, `bootstrap`. Adding one means adding a yaml file to
-`config/apps/theme/` -- no app code changes.
+`solarized`, `material`, `bootstrap`, `openbanking`, `openbanking_dark`. Adding
+one means adding a yaml file to `config/apps/theme/` -- no app code changes.
 
 A theme file is a set of design tokens plus a small `assets` block:
 
@@ -112,6 +112,12 @@ Leaflet tile layer, the CodeMirror stylesheet. The keys are deliberately
 app-agnostic: the theme says `tone: dark` and each app picks its own dark
 asset, so a theme file never has to know which apps exist.
 
+The `tokens` mapping is open-ended, so an app can introduce tokens of its own
+without touching any shared code -- `openbanking` is the worked example, with a
+`--color-header-bg` and friends sampled from a real retail-banking stylesheet.
+Consume those through a fallback, `var(--color-header-bg, var(--color-primary))`,
+so the app stays legible under the themes that do not define them.
+
 #### Layout
 
 ```shell
@@ -121,7 +127,14 @@ uv run launch.py apps/start_page/layout=broken_logos
 
 Available layouts: `todo` has `default` and `kanban_board`; `start_page` has
 `default`, `broken_logos` (icons detached from their tiles) and
-`clickable_logos`; the other apps currently have `default` only.
+`clickable_logos`; `openbanking` has `default` and `card_list`; the other apps
+currently have `default` only.
+
+The two axes compose, so structure can be varied independently of the palette:
+
+```shell
+uv run launch.py apps/todo/layout=kanban_board apps/theme=dark
+```
 
 #### Content
 
