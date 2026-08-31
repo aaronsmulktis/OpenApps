@@ -209,6 +209,15 @@ styles = Style("""
     .option-group label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
     .option-values { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 
+    .option-chips { display: flex; gap: 0.3rem; flex-wrap: wrap; margin: 0.25rem 0 0.4rem 0; }
+    .option-chip {
+        background-color: var(--color-bg);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius);
+        padding: 0.05rem 0.45rem;
+        font-size: 0.85rem;
+        color: var(--color-fg);
+    }
     .cart-line { display: flex; gap: 0.8rem; align-items: center; }
     .cart-line .product-thumb { flex: 0 0 72px; }
     .cart-line-body { flex: 1 1 auto; }
@@ -438,10 +447,15 @@ def set_environment(config):
     app.config = config
     db = database(config.onlineshop.database_path)
 
-    products = db.create(Product, pk="sku")
-    cart_items = db.create(CartItem, pk="id")
-    orders = db.create(Order, pk="order_id")
-    order_items = db.create(OrderItem, pk="id")
+    # Table names are given explicitly. Left to itself fastlite derives them
+    # from the class name and singularises, which produces a table called
+    # `order` -- a SQL reserved word that has to be quoted in every hand-written
+    # query. The point of this schema is that other apps and humans can read it
+    # directly, so the names are plural and boring.
+    products = db.create(Product, name="products", pk="sku")
+    cart_items = db.create(CartItem, name="cart_items", pk="id")
+    orders = db.create(Order, name="orders", pk="order_id")
+    order_items = db.create(OrderItem, name="order_items", pk="id")
 
     # set_environment is called again on reset, so clear before re-seeding
     # rather than relying on the caller having dropped the tables.
@@ -560,7 +574,16 @@ def page_shell(*content):
 
 
 def search_bar(value: str = ""):
+    """Shop chrome: browse link, search, cart and orders.
+
+    The "Shop" link is the way back to the landing page from anywhere. It
+    lives here rather than on the header logo because `clickable_logo` is a
+    start-page variation axis (see `config/apps/start_page/appearance/`) and
+    defaults to false -- navigation must not depend on a difficulty knob.
+    """
+    count = sum(row.quantity for row in _cart_rows())
     return Div(
+        A("Shop", href="/onlineshop", cls="btn btn-neutral", role="button"),
         Form(
             Input(
                 type="search",
@@ -573,7 +596,8 @@ def search_bar(value: str = ""):
             action="/onlineshop/search",
             method="post",
         ),
-        A("Cart", href="/onlineshop/cart", cls="btn btn-neutral", role="button"),
+        A(f"Cart ({count})" if count else "Cart",
+          href="/onlineshop/cart", cls="btn btn-neutral", role="button"),
         A("Orders", href="/onlineshop/orders", cls="btn btn-neutral", role="button"),
         cls="shop-bar",
     )
@@ -834,15 +858,28 @@ def cart_line(row):
     if product is None:
         return ""
     chosen = json.loads(row.options)
-    detail = ", ".join(f"{name}: {value}" for name, value in chosen.items())
+    # Options render as chips rather than a muted caption: two lines of the
+    # same product differ *only* by their options, so that difference has to
+    # be the most visible thing on the line or the cart reads as duplicated.
+    option_chips = Div(
+        *[Span(f"{name}: {value}", cls="option-chip") for name, value in chosen.items()],
+        cls="option-chips",
+    ) if chosen else ""
+    line_total = product.price * row.quantity
     return Div(
         Div(
             product_image(product, 72),
             Div(
                 H4(A(product.title, href=item_href(product)), cls="card-title"),
-                P(detail, cls="muted") if detail else "",
-                Div(Span(money(product.price), cls="card-price"),
-                    Span(f" x {row.quantity}", cls="muted")),
+                option_chips,
+                Div(
+                    Span(f"{money(product.price)} each", cls="muted"),
+                    Span(" x ", cls="muted"),
+                    Span(str(row.quantity), cls="muted"),
+                    Span(" = ", cls="muted"),
+                    Span(money(line_total), cls="card-price"),
+                ),
+                Span("Not selected for checkout", cls="muted") if not row.selected else "",
                 cls="cart-line-body",
             ),
             Div(

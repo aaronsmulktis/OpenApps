@@ -158,6 +158,30 @@ class TestCart:
         client.post(f"/onlineshop/cart/remove/{row_id}")
         assert shop._row(shop.cart_items, row_id) is None
 
+    def test_cart_line_shows_a_line_total(self, client):
+        client.post("/onlineshop/cart/add/offi-pen-702",
+                    data={"option_nib": "fine", "option_finish": "black", "quantity": 3})
+        body = client.get("/onlineshop/cart").text
+        assert "$89.00 each" in body
+        assert "$267.00" in body  # 89.00 x 3
+
+    def test_lines_differing_only_by_options_are_distinguishable(self, client):
+        """Two lines of one product differ *only* by options, so the options
+        have to be the most visible thing on the line."""
+        for nib in ("fine", "broad"):
+            client.post("/onlineshop/cart/add/offi-pen-702",
+                        data={"option_nib": nib, "option_finish": "black"})
+        body = client.get("/onlineshop/cart").text
+        assert body.count('class="option-chip"') >= 4  # 2 options x 2 lines
+        assert "nib: fine" in body and "nib: broad" in body
+
+    def test_every_page_can_navigate_back_to_the_shop(self, client):
+        """`clickable_logo` defaults to false and is a variation axis, so
+        navigation cannot depend on the header."""
+        for path in ("/onlineshop/cart", "/onlineshop/orders",
+                     "/onlineshop/item/offi-pen-702", "/onlineshop/search/coffee/1"):
+            assert 'href="/onlineshop"' in client.get(path).text, path
+
     def test_adding_unknown_sku_is_a_noop(self, client):
         before = len(state(client)["cart"])
         client.post("/onlineshop/cart/add/no-such-sku", data={"quantity": 1})
@@ -240,6 +264,16 @@ class TestRewardState:
         assert [order["order_id"] for order in payload["orders"]] == [
             "0efcf51f", "09bd3dfb"
         ]
+
+    def test_table_names_are_plural_and_not_reserved_words(self, client):
+        """The schema is meant to be read directly by other apps and by
+        humans. fastlite would otherwise singularise `Order` to `order`, a
+        SQL reserved word that breaks `SELECT * FROM order`."""
+        names = set(shop.db.table_names())
+        assert {"products", "cart_items", "orders", "order_items"} <= names
+        assert "order" not in names
+        # and the obvious query works unquoted
+        assert shop.db.q("SELECT order_id FROM orders LIMIT 1") is not None
 
     def test_catalog_is_opt_in(self, client):
         assert "catalog" not in state(client)
