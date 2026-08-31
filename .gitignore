@@ -184,12 +184,8 @@ outputs/*
 log_outputs/*
 artifacts/*
 
-# java config
-src/open_apps/apps/onlineshop_app/java
-src/open_apps/apps/onlineshop_app/data
-src/open_apps/apps/onlineshop_app/search_engine/indexes*
-src/open_apps/apps/onlineshop_app/search_engine/resources*
-src/open_apps/apps/onlineshop_app/goals*
+# java config (map app's OpenTripPlanner server; installed by setup.sh)
+src/open_apps/apps/map_app/java
 
 .vscode/*
 .vscode/settings.json
