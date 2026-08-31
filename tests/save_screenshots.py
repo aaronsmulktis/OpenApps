@@ -61,36 +61,54 @@ ROUTES = (
 )
 
 
+THEME_DIR = REPO_ROOT / "config" / "apps" / "theme"
+
+# The todo app no longer has an `appearance` group -- it renders from the shared
+# design tokens, so its counterpart to an appearance variant is a theme name.
+# Everything else still composes `config/apps/<app>/appearance/`.
+APPEARANCE_APPS = ("start_page", "calendar", "messenger", "maps", "code_editor")
+CONTENT_APPS = ("start_page", "todo", "calendar", "messenger", "maps", "code_editor")
+TODO_THEME_FOR_APPEARANCE = {
+    "dark_theme": "dark",
+    "challenging_font": "challenging_font",
+}
+
+
+def available_themes() -> list[str]:
+    """Theme stems under ``config/apps/theme/``, default first."""
+    stems = sorted(path.stem for path in THEME_DIR.glob("*.yaml"))
+    return ["default"] + [stem for stem in stems if stem != "default"]
+
+
+def appearance_variation(name: str, onlineshop_overrides: list[str]) -> list[str]:
+    apps = list(APPEARANCE_APPS) + (["onlineshop"] if onlineshop_overrides else [])
+    return (
+        onlineshop_overrides
+        + [f"apps/{app_name}/appearance={name}" for app_name in apps]
+        + [f"apps.todo.theme={TODO_THEME_FOR_APPEARANCE[name]}"]
+    )
+
+
 def build_variation_overrides(include_onlineshop: bool) -> dict[str, list[str]]:
-    appearance_apps = [
-        "start_page",
-        "todo",
-        "calendar",
-        "messenger",
-        "maps",
-        "code_editor",
-    ]
-    content_apps = list(appearance_apps)
     onlineshop_overrides = ["apps.onlineshop.enable=True"] if include_onlineshop else []
+    content_apps = list(CONTENT_APPS) + (["onlineshop"] if include_onlineshop else [])
 
-    if include_onlineshop:
-        appearance_apps.append("onlineshop")
-        content_apps.append("onlineshop")
-
-    return {
+    variations = {
         "default": onlineshop_overrides,
-        "dark_theme": onlineshop_overrides
-        + [f"apps/{app_name}/appearance=dark_theme" for app_name in appearance_apps],
-        "challenging_font": onlineshop_overrides
-        + [
-            f"apps/{app_name}/appearance=challenging_font"
-            for app_name in appearance_apps
-        ],
+        "dark_theme": appearance_variation("dark_theme", onlineshop_overrides),
+        "challenging_font": appearance_variation(
+            "challenging_font", onlineshop_overrides
+        ),
         "german": onlineshop_overrides
         + [f"apps/{app_name}/content=german" for app_name in content_apps],
         "long_descriptions": onlineshop_overrides
         + [f"apps/{app_name}/content=long_descriptions" for app_name in content_apps],
     }
+    # One variation per shared theme, named `theme_<stem>`, so a single
+    # `apps/theme=` override can be captured across every app at once.
+    for theme in available_themes():
+        variations[f"theme_{theme}"] = onlineshop_overrides + [f"apps/theme={theme}"]
+    return variations
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,13 +140,9 @@ def parse_args() -> argparse.Namespace:
         "--variation",
         dest="variations",
         nargs="*",
-        choices=[
-            "default",
-            "dark_theme",
-            "challenging_font",
-            "german",
-            "long_descriptions",
-        ],
+        # `theme_*` entries are opt-in: they are not part of the reference set,
+        # they exist so the docs gallery can be regenerated with one command.
+        choices=sorted(build_variation_overrides(include_onlineshop=False)),
         default=[
             "default",
             "dark_theme",

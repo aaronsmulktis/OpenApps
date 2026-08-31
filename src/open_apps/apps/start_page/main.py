@@ -34,6 +34,7 @@ except ImportError:
         generate_random_colors,
     )
 from omegaconf import DictConfig, OmegaConf
+from open_apps.theme import legacy_theme_css
 
 # Define available apps and their route getters
 AVAILABLE_APPS = {
@@ -324,7 +325,15 @@ def get():
     )
     
     # Return the page with configuration
-    return PageWrapper("main-page", wrapper, footer(), config=config)
+    return PageWrapper(
+        "main-page",
+        wrapper,
+        footer(),
+        config=config,
+        # Resolved per-request so live `reconfigure` theme swaps take effect;
+        # empty string on the default theme.
+        theme_css=legacy_theme_css(app.config, "start_page"),
+    )
 
 
 @rt("/environment_variables")

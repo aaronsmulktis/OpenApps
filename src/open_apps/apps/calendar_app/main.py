@@ -13,6 +13,7 @@ from fasthtml.common import (
     HighlightJS, database, dataclass)
 from datetime import datetime, timedelta
 from src.open_apps.frontend import local_hdrs
+from src.open_apps.theme import legacy_theme_style
 import calendar
 import os
 import logging
@@ -235,6 +236,15 @@ def set_environment(config):
         base_url="/calendar",
         current_file_path=__file__
     )
+
+
+def calendar_theme():
+    """The active theme, mapped onto this app's `appearance` CSS variables.
+
+    Empty on the default theme. Rendered per-request (and after `styles`, which
+    it has to override) so live `reconfigure` theme swaps take effect.
+    """
+    return legacy_theme_style(app.config, "calendar")
 
 
 def update_db_from_hydra():
@@ -595,6 +605,7 @@ def get(req):
         Title(app.config.start_page.apps.calendar.title),
         Container(
             styles,
+            calendar_theme(),
             error_div, 
             show_main_layout(today.year, today.month, view)
         ),
@@ -626,6 +637,7 @@ def get(
         Title(app.config.start_page.apps.calendar.title),
         Container(
             styles,
+            calendar_theme(),
             show_main_layout(year, month, view)
         )
     )
@@ -707,7 +719,8 @@ def get(id: int):
     return (
         Title(event.title),
         Container(
-            styles,  
+            styles,
+            calendar_theme(),
             logo_title_container,
             Article(
                 H3(event.title),
@@ -770,6 +783,7 @@ def get():
     return (Title("Creating a new event"),
             Container(
         styles,
+        calendar_theme(),
         logo_title_container,
         Form(
             H3("Create New Event"),
