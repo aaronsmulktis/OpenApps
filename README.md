@@ -125,9 +125,8 @@ Our apps are built on top of several excellent frameworks:
 
 - FastHTML [framework](https://github.com/AnswerDotAI/fasthtml) and [examples](https://github.com/AnswerDotAI/fasthtml-example) which allowed us to build fully functional apps in Python, the language most familiar to AI researchers.
 - [Browser Gym](https://github.com/ServiceNow/BrowserGym/blob/main/LICENSE) and [AgentLab](https://github.com/ServiceNow/AgentLab/blob/main/LICENSE):
-- [Spacy](https://github.com/innoq/spacy/blob/main/LICENSE): for natural language processing
 - Open Street Maps: https://www.openstreetmap.org/copyright for our Maps apps.
-- (and for the optional webshop) we rely on [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md) developed by Princeton 
+- our online shop's design descends from [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md), developed by Princeton University. It has since been rewritten and no longer uses WebShop's code or dataset.
 
 Some icons are have been designed using resources from Flaticon.com
 

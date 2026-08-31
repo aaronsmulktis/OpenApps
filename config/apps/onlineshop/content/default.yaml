@@ -1,34 +1,742 @@
 # @package apps.onlineshop
 
+# The shop's catalog lives here rather than in a downloaded dataset. The
+# previous implementation pulled ~1000 scraped Amazon products from Google
+# Drive via `gdown` and searched them through a Lucene index (hence the JDK 21
+# dependency); none of that was reachable offline, and the reward path that
+# consumed the dataset's attribute annotations was never called. A seeded
+# catalog keeps the app self-contained and makes `content` a real variation
+# axis, the same way every other OpenApps app works.
+#
+# Product schema (see `onlineshop_app.main.Product`):
+#   sku         stable id, used in URLs and in the cart/order state
+#   title       display name; also the highest-weighted search field
+#   price       float, in `currency` units
+#   category    slug, groups products on the home page and in `?category=`
+#   breadcrumb  list of crumbs shown on the item page
+#   rating      float 0-5, rendered as stars
+#   options     mapping of option name -> selectable values (may be empty)
+#   bullets     short feature list
+#   description free text; searched, and truncated in listings
+
 title: ${apps.start_page.apps.onlineshop.title}
 
 description: 'Your one-stop shop for everything!'
-promotional_message: '✨ Special Pick of the Day!' # "🎯 Handpicked Just for You!"
+promotional_message: '✨ Special Pick of the Day!'
 additional_info_to_item: ''
 
+currency_symbol: '$'
 
+# Shown as the category strip on the home page. Order is preserved.
+categories:
+  electronics: 'Electronics'
+  home_kitchen: 'Home & Kitchen'
+  furniture: 'Furniture'
+  apparel: 'Apparel'
+  outdoors: 'Outdoors'
+  beauty: 'Beauty'
+  grocery: 'Grocery'
+  office: 'Office'
+
+products:
+  # ---- electronics ------------------------------------------------------
+  - sku: 'elec-hdph-001'
+    title: 'Wireless Noise-Cancelling Headphones'
+    price: 249.00
+    category: electronics
+    breadcrumb: ['Electronics', 'Audio', 'Headphones']
+    rating: 4.6
+    options:
+      color: ['black', 'silver', 'navy']
+    bullets:
+      - 'Up to 30 hours of battery life'
+      - 'Adaptive noise cancellation'
+      - 'Multipoint Bluetooth pairing'
+    description: >-
+      Over-ear wireless headphones with adaptive noise cancellation and a
+      memory-foam headband tuned for long listening sessions.
+
+  - sku: 'elec-mntr-002'
+    title: '27-inch 4K UHD Monitor'
+    price: 379.99
+    category: electronics
+    breadcrumb: ['Electronics', 'Computers', 'Monitors']
+    rating: 4.4
+    options:
+      size: ['27 inch', '32 inch']
+      stand: ['tilt', 'height adjustable']
+    bullets:
+      - '3840 x 2160 resolution at 60Hz'
+      - '99% sRGB colour coverage'
+      - 'USB-C with 65W power delivery'
+    description: >-
+      A colour-accurate 4K panel with a single-cable USB-C connection, so a
+      laptop charges and drives the display at the same time.
+
+  - sku: 'elec-keyb-003'
+    title: 'Compact Mechanical Keyboard'
+    price: 129.50
+    category: electronics
+    breadcrumb: ['Electronics', 'Computers', 'Keyboards']
+    rating: 4.7
+    options:
+      switch: ['tactile', 'linear', 'clicky']
+      layout: ['us', 'uk', 'nordic']
+    bullets:
+      - '75% layout with dedicated arrow keys'
+      - 'Hot-swappable switch sockets'
+      - 'Detachable braided USB-C cable'
+    description: >-
+      A 75% mechanical keyboard with hot-swappable sockets, so switches can be
+      changed without soldering.
+
+  - sku: 'elec-spkr-004'
+    title: 'Portable Bluetooth Speaker'
+    price: 89.00
+    category: electronics
+    breadcrumb: ['Electronics', 'Audio', 'Speakers']
+    rating: 4.3
+    options:
+      color: ['charcoal', 'sand', 'forest green']
+    bullets:
+      - 'IPX7 waterproof rating'
+      - '12 hour playtime'
+      - 'Pairs two speakers for stereo'
+    description: >-
+      A pocketable waterproof speaker that pairs with a second unit for true
+      stereo separation.
+
+  - sku: 'elec-hub-005'
+    title: 'USB-C 8-in-1 Charging Hub'
+    price: 64.95
+    category: electronics
+    breadcrumb: ['Electronics', 'Computers', 'Accessories']
+    rating: 4.1
+    options:
+      color: ['space grey', 'silver']
+    bullets:
+      - 'Two HDMI outputs at 4K'
+      - 'SD and microSD card readers'
+      - '100W pass-through charging'
+    description: >-
+      Expands a single USB-C port into eight, including dual 4K HDMI and
+      100W pass-through charging.
+
+  # ---- home & kitchen ---------------------------------------------------
+  - sku: 'home-cook-101'
+    title: 'Stainless Steel Cookware Set'
+    price: 319.00
+    category: home_kitchen
+    breadcrumb: ['Home & Kitchen', 'Cookware', 'Sets']
+    rating: 4.5
+    options:
+      pieces: ['8 piece', '12 piece']
+    bullets:
+      - 'Tri-ply construction with aluminium core'
+      - 'Oven safe to 260C'
+      - 'Dishwasher safe'
+    description: >-
+      Tri-ply stainless cookware with an aluminium core that spreads heat
+      evenly and will not react with acidic ingredients.
+
+  - sku: 'home-brew-102'
+    title: 'Ceramic Pour-Over Coffee Set'
+    price: 54.00
+    category: home_kitchen
+    breadcrumb: ['Home & Kitchen', 'Coffee & Tea', 'Brewing']
+    rating: 4.8
+    options:
+      color: ['matte white', 'slate']
+    bullets:
+      - 'Includes dripper, carafe and lid'
+      - 'Borosilicate glass carafe'
+      - 'Fits standard #2 filters'
+    description: >-
+      A ceramic dripper and 600ml glass carafe for hand-brewed coffee, sized
+      for two cups.
+
+  - sku: 'home-skil-103'
+    title: 'Pre-Seasoned Cast Iron Skillet'
+    price: 42.50
+    category: home_kitchen
+    breadcrumb: ['Home & Kitchen', 'Cookware', 'Skillets']
+    rating: 4.7
+    options:
+      size: ['10 inch', '12 inch']
+    bullets:
+      - 'Pre-seasoned with vegetable oil'
+      - 'Oven, grill and campfire safe'
+      - 'Pour spouts on both sides'
+    description: >-
+      A pre-seasoned cast iron skillet that moves from hob to oven to campfire
+      and improves with use.
+
+  - sku: 'home-kettl-104'
+    title: 'Variable Temperature Electric Kettle'
+    price: 98.00
+    category: home_kitchen
+    breadcrumb: ['Home & Kitchen', 'Small Appliances', 'Kettles']
+    rating: 4.4
+    options:
+      color: ['brushed steel', 'matte black']
+    bullets:
+      - 'Six preset brewing temperatures'
+      - 'Gooseneck spout for pour control'
+      - 'Keep-warm holds for 60 minutes'
+    description: >-
+      A gooseneck kettle with six preset temperatures, letting delicate teas
+      and coffee each get the water they want.
+
+  - sku: 'home-board-105'
+    title: 'Bamboo Cutting Board Set'
+    price: 34.99
+    category: home_kitchen
+    breadcrumb: ['Home & Kitchen', 'Kitchen Tools', 'Cutting Boards']
+    rating: 4.2
+    options:
+      pieces: ['2 piece', '3 piece']
+    bullets:
+      - 'Sustainably harvested bamboo'
+      - 'Juice groove around the edge'
+      - 'Knife-friendly end grain'
+    description: >-
+      Three nesting bamboo boards with juice grooves, light enough to lift
+      one-handed when full.
+
+  # ---- furniture --------------------------------------------------------
+  - sku: 'furn-table-201'
+    title: 'Solid Oak Dining Table'
+    price: 429.00
+    category: furniture
+    breadcrumb: ['Furniture', 'Dining', 'Tables']
+    rating: 4.6
+    options:
+      finish: ['natural', 'walnut', 'espresso']
+      size: ['seats four', 'seats six']
+    bullets:
+      - 'FSC-certified solid oak'
+      - 'Seats six comfortably'
+      - 'Assembles in under 30 minutes'
+    description: >-
+      A solid oak dining table with a hand-rubbed oil finish that can be
+      sanded and refreshed rather than replaced.
+
+  - sku: 'furn-chair-202'
+    title: 'Ergonomic Mesh Office Chair'
+    price: 289.00
+    category: furniture
+    breadcrumb: ['Furniture', 'Office', 'Chairs']
+    rating: 4.5
+    options:
+      color: ['black', 'grey']
+      armrests: ['fixed', '4D adjustable']
+    bullets:
+      - 'Adjustable lumbar support'
+      - 'Breathable mesh back'
+      - 'Synchronised tilt mechanism'
+    description: >-
+      A mesh-backed task chair with adjustable lumbar support and a
+      synchronised tilt that follows your posture.
+
+  - sku: 'furn-armch-203'
+    title: 'Linen Upholstered Armchair'
+    price: 549.00
+    category: furniture
+    breadcrumb: ['Furniture', 'Living Room', 'Chairs']
+    rating: 4.3
+    options:
+      color: ['oatmeal', 'charcoal', 'sage']
+      legs: ['oak', 'black metal']
+    bullets:
+      - 'Removable, washable linen cover'
+      - 'Kiln-dried hardwood frame'
+      - 'High-resilience foam cushion'
+    description: >-
+      A compact armchair with a washable linen cover over a kiln-dried
+      hardwood frame.
+
+  - sku: 'furn-shelf-204'
+    title: 'Walnut Five-Shelf Bookcase'
+    price: 319.00
+    category: furniture
+    breadcrumb: ['Furniture', 'Storage', 'Bookcases']
+    rating: 4.4
+    options:
+      height: ['150 cm', '180 cm']
+    bullets:
+      - 'Five fixed shelves'
+      - 'Anti-tip wall anchor included'
+      - 'Holds 20 kg per shelf'
+    description: >-
+      A walnut-veneer bookcase with five shelves rated to 20kg each, supplied
+      with an anti-tip anchor.
+
+  - sku: 'furn-desk-205'
+    title: 'Adjustable Standing Desk'
+    price: 599.00
+    category: furniture
+    breadcrumb: ['Furniture', 'Office', 'Desks']
+    rating: 4.7
+    options:
+      size: ['120 cm', '140 cm', '160 cm']
+      finish: ['bamboo', 'white', 'walnut']
+    bullets:
+      - 'Electric height adjustment, 65-130 cm'
+      - 'Four programmable height presets'
+      - 'Cable management tray included'
+    description: >-
+      A dual-motor sit-stand desk with four height presets and a quiet lift
+      rated for 80kg.
+
+  # ---- apparel ----------------------------------------------------------
+  - sku: 'appa-swtr-301'
+    title: 'Merino Wool Crew Sweater'
+    price: 118.00
+    category: apparel
+    breadcrumb: ['Apparel', 'Knitwear', 'Sweaters']
+    rating: 4.5
+    options:
+      size: ['small', 'medium', 'large', 'x-large']
+      color: ['heather grey', 'navy', 'burgundy']
+    bullets:
+      - '100% extra-fine merino wool'
+      - 'Machine washable on wool cycle'
+      - 'Ribbed cuffs and hem'
+    description: >-
+      An extra-fine merino crew neck that regulates temperature well enough to
+      wear on its own or as a mid-layer.
+
+  - sku: 'appa-jckt-302'
+    title: 'Waterproof Shell Jacket'
+    price: 189.00
+    category: apparel
+    breadcrumb: ['Apparel', 'Outerwear', 'Jackets']
+    rating: 4.4
+    options:
+      size: ['small', 'medium', 'large', 'x-large']
+      color: ['black', 'moss', 'rust']
+    bullets:
+      - '20k waterproof rating'
+      - 'Fully taped seams'
+      - 'Packs into its own pocket'
+    description: >-
+      A three-layer waterproof shell with taped seams and pit zips that packs
+      into its own chest pocket.
+
+  - sku: 'appa-shrt-303'
+    title: 'Cotton Oxford Shirt'
+    price: 78.00
+    category: apparel
+    breadcrumb: ['Apparel', 'Shirts', 'Casual']
+    rating: 4.2
+    options:
+      size: ['small', 'medium', 'large', 'x-large']
+      color: ['white', 'light blue', 'pink stripe']
+    bullets:
+      - 'Long-staple cotton oxford cloth'
+      - 'Button-down collar'
+      - 'Softens with every wash'
+    description: >-
+      A button-down oxford in long-staple cotton, cut with enough room to move
+      without looking boxy.
+
+  - sku: 'appa-shoe-304'
+    title: 'Lightweight Running Shoes'
+    price: 134.00
+    category: apparel
+    breadcrumb: ['Apparel', 'Footwear', 'Running']
+    rating: 4.6
+    options:
+      size: ['uk 6', 'uk 7', 'uk 8', 'uk 9', 'uk 10', 'uk 11']
+      color: ['white', 'black', 'volt']
+    bullets:
+      - 'Responsive foam midsole'
+      - 'Engineered mesh upper'
+      - '218 g in a UK 8'
+    description: >-
+      A neutral daily trainer with a responsive foam midsole, light enough for
+      tempo runs but cushioned enough for long ones.
+
+  - sku: 'appa-scrf-305'
+    title: 'Wool Blend Scarf'
+    price: 46.00
+    category: apparel
+    breadcrumb: ['Apparel', 'Accessories', 'Scarves']
+    rating: 4.1
+    options:
+      color: ['camel', 'charcoal', 'forest green']
+    bullets:
+      - 'Wool and cashmere blend'
+      - 'Hand-finished fringed ends'
+      - '180 x 30 cm'
+    description: >-
+      A wool-cashmere scarf long enough to double-loop, with hand-finished
+      fringing.
+
+  # ---- outdoors ---------------------------------------------------------
+  - sku: 'outd-tent-401'
+    title: 'Two-Person Backpacking Tent'
+    price: 279.00
+    category: outdoors
+    breadcrumb: ['Outdoors', 'Camping', 'Tents']
+    rating: 4.5
+    options:
+      color: ['granite', 'orange']
+    bullets:
+      - '1.9 kg packed weight'
+      - 'Two doors and two vestibules'
+      - 'Freestanding aluminium pole set'
+    description: >-
+      A freestanding two-person tent under two kilograms, with a door and
+      vestibule on each side so nobody climbs over anybody.
+
+  - sku: 'outd-bag-402'
+    title: 'Down Sleeping Bag'
+    price: 235.00
+    category: outdoors
+    breadcrumb: ['Outdoors', 'Camping', 'Sleeping Bags']
+    rating: 4.6
+    options:
+      rating: ['-1 C', '-7 C']
+      length: ['regular', 'long']
+    bullets:
+      - '650 fill-power responsibly sourced down'
+      - 'Draft collar and full-length baffle'
+      - 'Compression sack included'
+    description: >-
+      A mummy bag with 650 fill-power down, a draft collar, and a full-length
+      zip baffle to keep warmth in.
+
+  - sku: 'outd-pole-403'
+    title: 'Carbon Trekking Poles'
+    price: 119.00
+    category: outdoors
+    breadcrumb: ['Outdoors', 'Hiking', 'Poles']
+    rating: 4.3
+    options:
+      grip: ['cork', 'foam']
+    bullets:
+      - 'Three-section carbon shafts'
+      - 'Flick-lock length adjustment'
+      - 'Carbide tips with rubber caps'
+    description: >-
+      Three-section carbon poles with flick-lock adjustment, packing down
+      short enough for a daypack side pocket.
+
+  - sku: 'outd-bttl-404'
+    title: 'Insulated Water Bottle'
+    price: 38.00
+    category: outdoors
+    breadcrumb: ['Outdoors', 'Hydration', 'Bottles']
+    rating: 4.7
+    options:
+      size: ['500 ml', '750 ml', '1 litre']
+      color: ['stainless', 'matte black', 'sky blue']
+    bullets:
+      - 'Keeps drinks cold 24 hours, hot 12'
+      - 'Double-wall vacuum insulation'
+      - 'Leakproof screw cap'
+    description: >-
+      A vacuum-insulated stainless bottle with a leakproof cap and a mouth
+      wide enough for ice cubes.
+
+  - sku: 'outd-pack-405'
+    title: 'Hiking Daypack'
+    price: 92.00
+    category: outdoors
+    breadcrumb: ['Outdoors', 'Hiking', 'Backpacks']
+    rating: 4.4
+    options:
+      capacity: ['20 litre', '28 litre']
+      color: ['slate', 'olive', 'burgundy']
+    bullets:
+      - 'Ventilated back panel'
+      - 'Hydration bladder sleeve'
+      - 'Integrated rain cover'
+    description: >-
+      A ventilated daypack with a hydration sleeve and a rain cover stowed in
+      the base.
+
+  # ---- beauty -----------------------------------------------------------
+  - sku: 'beau-serm-501'
+    title: 'Vitamin C Facial Serum'
+    price: 48.00
+    category: beauty
+    breadcrumb: ['Beauty', 'Skincare', 'Serums']
+    rating: 4.4
+    options:
+      size: ['30 ml', '50 ml']
+    bullets:
+      - '15% L-ascorbic acid'
+      - 'Fragrance free'
+      - 'Amber glass bottle'
+    description: >-
+      A 15% vitamin C serum in amber glass, stabilised with ferulic acid and
+      free of added fragrance.
+
+  - sku: 'beau-clns-502'
+    title: 'Gentle Foaming Cleanser'
+    price: 26.00
+    category: beauty
+    breadcrumb: ['Beauty', 'Skincare', 'Cleansers']
+    rating: 4.5
+    options:
+      size: ['150 ml', '250 ml']
+    bullets:
+      - 'pH balanced at 5.5'
+      - 'Suitable for sensitive skin'
+      - 'Sulphate free'
+    description: >-
+      A pH-balanced foaming cleanser that removes the day without stripping,
+      formulated for sensitive skin.
+
+  - sku: 'beau-sunc-503'
+    title: 'Mineral Sunscreen SPF 50'
+    price: 32.00
+    category: beauty
+    breadcrumb: ['Beauty', 'Skincare', 'Sun Care']
+    rating: 4.2
+    options:
+      size: ['50 ml', '100 ml']
+      finish: ['matte', 'dewy']
+    bullets:
+      - 'Non-nano zinc oxide'
+      - 'Reef safe formulation'
+      - 'No white cast on most skin tones'
+    description: >-
+      A non-nano zinc sunscreen that finishes matte and layers under makeup
+      without pilling.
+
+  - sku: 'beau-hair-504'
+    title: 'Argan Oil Hair Treatment'
+    price: 29.50
+    category: beauty
+    breadcrumb: ['Beauty', 'Hair Care', 'Treatments']
+    rating: 4.3
+    options:
+      size: ['50 ml', '100 ml']
+    bullets:
+      - 'Cold-pressed Moroccan argan oil'
+      - 'Lightweight, non-greasy finish'
+      - 'Heat protection to 200C'
+    description: >-
+      A lightweight argan oil treatment that tames frizz and adds heat
+      protection before styling.
+
+  - sku: 'beau-mask-505'
+    title: 'Charcoal Face Mask Set'
+    price: 24.00
+    category: beauty
+    breadcrumb: ['Beauty', 'Skincare', 'Masks']
+    rating: 4.0
+    options:
+      pieces: ['5 pack', '10 pack']
+    bullets:
+      - 'Bamboo charcoal and kaolin clay'
+      - 'Individually sealed sheets'
+      - 'Ten minute treatment'
+    description: >-
+      Individually sealed charcoal and kaolin sheet masks for a ten-minute
+      deep clean.
+
+  # ---- grocery ----------------------------------------------------------
+  - sku: 'groc-coff-601'
+    title: 'Single-Origin Coffee Beans'
+    price: 21.00
+    category: grocery
+    breadcrumb: ['Grocery', 'Coffee & Tea', 'Coffee']
+    rating: 4.7
+    options:
+      roast: ['light', 'medium', 'dark']
+      weight: ['250 g', '1 kg']
+      grind: ['whole bean', 'filter', 'espresso']
+    bullets:
+      - 'Washed Ethiopian Yirgacheffe'
+      - 'Roasted to order'
+      - 'Notes of bergamot and stone fruit'
+    description: >-
+      A washed Ethiopian single origin roasted to order, with bergamot and
+      stone fruit in the cup.
+
+  - sku: 'groc-mtch-602'
+    title: 'Ceremonial Grade Matcha Powder'
+    price: 34.00
+    category: grocery
+    breadcrumb: ['Grocery', 'Coffee & Tea', 'Tea']
+    rating: 4.5
+    options:
+      weight: ['30 g', '100 g']
+    bullets:
+      - 'First-harvest Uji leaves'
+      - 'Stone-ground to 5 microns'
+      - 'Resealable tin'
+    description: >-
+      First-harvest Uji matcha, stone-ground and packed in a resealable tin to
+      keep it from oxidising.
+
+  - sku: 'groc-oliv-603'
+    title: 'Extra Virgin Olive Oil'
+    price: 27.50
+    category: grocery
+    breadcrumb: ['Grocery', 'Pantry', 'Oils']
+    rating: 4.6
+    options:
+      size: ['500 ml', '750 ml']
+    bullets:
+      - 'Cold-pressed within 12 hours of harvest'
+      - 'Single estate, Puglia'
+      - 'Light-blocking tin'
+    description: >-
+      A peppery single-estate olive oil, cold-pressed within twelve hours of
+      picking and sold in a light-blocking tin.
+
+  - sku: 'groc-hony-604'
+    title: 'Raw Wildflower Honey'
+    price: 18.00
+    category: grocery
+    breadcrumb: ['Grocery', 'Pantry', 'Sweeteners']
+    rating: 4.4
+    options:
+      size: ['340 g', '680 g']
+    bullets:
+      - 'Unfiltered and unpasteurised'
+      - 'Single apiary'
+      - 'Crystallises naturally'
+    description: >-
+      Unfiltered wildflower honey from a single apiary, which will crystallise
+      over time and can be warmed back to liquid.
+
+  - sku: 'groc-choc-605'
+    title: 'Dark Chocolate Assortment'
+    price: 39.00
+    category: grocery
+    breadcrumb: ['Grocery', 'Confectionery', 'Chocolate']
+    rating: 4.8
+    options:
+      pieces: ['12 piece', '24 piece']
+    bullets:
+      - 'Six single-origin bars'
+      - '70% to 85% cocoa'
+      - 'Gift boxed'
+    description: >-
+      Six single-origin dark chocolate bars from 70% to 85%, presented in a
+      gift box with tasting notes.
+
+  # ---- office -----------------------------------------------------------
+  - sku: 'offi-note-701'
+    title: 'Hardcover Dot-Grid Notebook'
+    price: 24.00
+    category: office
+    breadcrumb: ['Office', 'Paper', 'Notebooks']
+    rating: 4.6
+    options:
+      size: ['a5', 'b5']
+      color: ['black', 'forest green', 'oxblood']
+    bullets:
+      - '120 gsm fountain-pen friendly paper'
+      - 'Lies flat when open'
+      - 'Numbered pages with index'
+    description: >-
+      A hardcover dot-grid notebook on 120gsm paper that takes fountain ink
+      without bleeding through.
+
+  - sku: 'offi-pen-702'
+    title: 'Brass Fountain Pen'
+    price: 89.00
+    category: office
+    breadcrumb: ['Office', 'Writing', 'Pens']
+    rating: 4.5
+    options:
+      nib: ['extra fine', 'fine', 'medium', 'broad']
+      finish: ['raw brass', 'black']
+    bullets:
+      - 'Stainless steel nib'
+      - 'Takes standard international cartridges'
+      - 'Converter included'
+    description: >-
+      A solid brass fountain pen that develops a patina with use, supplied
+      with a converter for bottled ink.
+
+  - sku: 'offi-orgz-703'
+    title: 'Walnut Desk Organizer'
+    price: 58.00
+    category: office
+    breadcrumb: ['Office', 'Desk', 'Organisation']
+    rating: 4.2
+    options:
+      finish: ['walnut', 'oak']
+    bullets:
+      - 'Slots for phone, pens and cards'
+      - 'Felt-lined base'
+      - 'Solid hardwood, not veneer'
+    description: >-
+      A solid hardwood desk caddy with a felt-lined base and slots sized for a
+      phone, pens and business cards.
+
+  - sku: 'offi-lamp-704'
+    title: 'LED Desk Lamp'
+    price: 76.00
+    category: office
+    breadcrumb: ['Office', 'Lighting', 'Desk Lamps']
+    rating: 4.4
+    options:
+      color: ['white', 'black']
+      temperature: ['warm', 'neutral', 'cool']
+    bullets:
+      - 'Stepless brightness dimming'
+      - 'Three colour temperatures'
+      - 'USB charging port in the base'
+    description: >-
+      A dimmable LED desk lamp with three colour temperatures and a USB port
+      in the base for a phone.
+
+  - sku: 'offi-shrd-705'
+    title: 'Cross-Cut Document Shredder'
+    price: 112.00
+    category: office
+    breadcrumb: ['Office', 'Equipment', 'Shredders']
+    rating: 4.0
+    options:
+      capacity: ['8 sheet', '12 sheet']
+    bullets:
+      - 'P-4 security cross-cut'
+      - 'Shreds staples and credit cards'
+      - '18 litre pull-out bin'
+    description: >-
+      A P-4 cross-cut shredder that handles staples and cards, with a
+      pull-out 18-litre bin.
+
+# Initial cart contents. Each entry references a `sku` above; `options` must
+# name values the product actually offers (unknown options are dropped at
+# load time with a warning rather than failing the launch).
 cart:
-  - asin: "B09QQP3356"
-    options: {"color": "light blue", "size": "x-large"}
+  - sku: 'elec-hdph-001'
+    options: {color: 'navy'}
     quantity: 1
-    image: "https://m.media-amazon.com/images/I/41m6qF2BlZL.jpg"
-  - asin: "B08K7LDM7Q"
-    options: {"size": "20\"x20\""}
+  - sku: 'home-brew-102'
+    options: {color: 'matte white'}
     quantity: 2
-    image: "https://m.media-amazon.com/images/I/414UNymlFJL.jpg"
 
+# Initial order history, newest last.
 orders:
-  - order_id: "0efcf51f"
-    items: {"('B07YPYJ32Z', '{}')": {"quantity": 1, "options": {}, "selected": true, "image": "https://m.media-amazon.com/images/I/51hs-NMRWzL.jpg"}}
-    total: 31.15
-    name: "Name"
-    address: "address"
-    date: "2025-08-29 19:54:34"
-    status: "Processing"
-  - order_id: "09bd3dfb"
-    items: {"('B08BV94TBP', '{}')": {"quantity": 2, "options": {}, "selected": true, "image": "https://m.media-amazon.com/images/I/41WXx9sipvL.jpg"}, "('B073J29HJW', '{}')": {"quantity": 1, "options": {}, "selected": true, "image": "https://m.media-amazon.com/images/I/41e3AlYYKVL.jpg"}}
-    total: 249.99
-    name: "name"
-    address: "Add"
-    date: "2025-08-29 19:55:08"
-    status: "Processing"
+  - order_id: '0efcf51f'
+    name: 'Alex Morgan'
+    address: '14 Bridge Street, Cambridge'
+    date: '2026-08-24 19:54:34'
+    status: 'Delivered'
+    items:
+      - sku: 'groc-coff-601'
+        options: {roast: 'medium', weight: '250 g', grind: 'whole bean'}
+        quantity: 1
+  - order_id: '09bd3dfb'
+    name: 'Alex Morgan'
+    address: '14 Bridge Street, Cambridge'
+    date: '2026-08-29 19:55:08'
+    status: 'Processing'
+    items:
+      - sku: 'appa-swtr-301'
+        options: {size: 'medium', color: 'navy'}
+        quantity: 2
+      - sku: 'offi-note-701'
+        options: {size: 'a5', color: 'black'}
+        quantity: 1

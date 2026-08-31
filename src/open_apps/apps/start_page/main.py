@@ -63,6 +63,7 @@ APP_MODULE_TO_NAME = {
     "open_apps.apps.messenger_app": "messenger",
     "open_apps.apps.codeeditor_app": "code_editor",
     "open_apps.apps.map_app": "maps",
+    "open_apps.apps.onlineshop_app": "onlineshop",
 }
 
 
@@ -131,16 +132,20 @@ def initialize_routes_and_configure_task(config: DictConfig = None):
     app.config = config  # Update the global app config
 
     java_version_high_enough = get_java_version().startswith("21")
+
+    # The shop used to be gated on OpenJDK 21, because its search ran through
+    # a Lucene index via pyserini. It now uses SQLite FTS5 and seeds its
+    # catalog from Hydra, so it has no native dependency and no setup step --
+    # only the config flag decides. Maps still needs Java for the OTP routing
+    # server, which is what `java_version_high_enough` is for below.
     if not app.config.onlineshop.enable:
         print("---> Online shop is disabled in the config.")
     else:
-        print("Java version check:", get_java_version())
-        if java_version_high_enough:
-            print("---> Online shop turned on!!")
-            AVAILABLE_APPS["onlineshop"] = (
-                "open_apps.apps.onlineshop_app",
-                "get_onlineshop_routes",
-            )
+        print("---> Online shop turned on!!")
+        AVAILABLE_APPS["onlineshop"] = (
+            "open_apps.apps.onlineshop_app",
+            "get_onlineshop_routes",
+        )
     if java_version_high_enough:
         if app.config.maps.allow_planning:
             print("---> Map planning is not available without Java 21 or higher.")

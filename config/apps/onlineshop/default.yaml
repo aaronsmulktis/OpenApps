@@ -1,5 +1,27 @@
 defaults:
   - content: default
-  - appearance: default
+  - layout: default
 
-database_path: ${databases_dir}/onlineshop
+# A single SQLite file, like the other apps. The previous implementation wrote
+# `cart.json` / `orders.json` into a directory of this name; the rewrite keeps
+# everything (catalog included) in one database so other apps can read the
+# shop's tables directly.
+database_path: ${databases_dir}/onlineshop.db
+
+# Per-app theme override. null = inherit the global `apps/theme` selection.
+# Override for just this app with `apps.onlineshop.theme=solarized`.
+theme: null
+
+# The shop used to be gated behind an OpenJDK 21 install (Lucene, via
+# pyserini) and a dataset downloaded from Google Drive, so it defaulted off.
+# Search is now SQLite FTS5 and the catalog ships in `content`, so it has no
+# setup step and is on by default. Turn it off with `apps.onlineshop.enable=False`.
+enable: True
+
+allowed_credit_cards:
+  - 'Visa'
+  - 'MasterCard'
+enable_credit_card_check: false
+
+# Products per page in listings and search results.
+products_per_page: 10

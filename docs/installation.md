@@ -10,22 +10,31 @@
 
 3) Install `playwright install chromium`
 
-/// details | Optionally install for onlineshop (off by default)
+That is the whole installation — every app, the online shop included, runs
+from `uv sync` with no further setup.
 
-`Onlineshop java + spacy configuration`
+/// details | Optionally install Java 21 for map route planning
 
-4) Prepare Java, Webshop data and spacy model: `chmod +x setup.sh` and `./setup.sh` for **Linux X64** or **Mac ARM64** systems
+The map app shells out to an OpenTripPlanner server, which is Java. Only
+`apps.maps.allow_planning` needs it; skip this unless you want route planning.
+
+4) Install OpenJDK 21: `chmod +x setup.sh` and `./setup.sh` for **Linux X64** or **Mac ARM64** systems
 
 5) Designate Java path: `source setup_javapath.sh` for **Linux X64** or **Mac ARM64** systems
 
 6) Check `java -version` gives you `java version "21.0.1"`
 
-7) Build search engine indexes: `chmod +x setup_pyserini.sh` and `./setup_pyserini.sh`
+**Remember to run `source setup_javapath.sh` in future shells before launching map-planning tasks.**
+///
 
-**Congratulations! The onlineshop is ready to be used. Remember in future, always run `source setup_javapath.sh` to configure Java path before launching onlineshop-related tasks.**
+/// details | A note on the online shop
 
-Finally, launch with
+The shop used to need OpenJDK 21, a product dataset downloaded from Google
+Drive, a spaCy model, and a Lucene index built with `pyserini`. It now seeds
+its catalog from `config/apps/onlineshop/content/` and searches with SQLite
+FTS5, so it has no setup step and is enabled by default. Turn it off with:
+
 ```
-uv run launch.py apps.onlineshop.enable=True
+uv run launch.py apps.onlineshop.enable=False
 ```
 ///

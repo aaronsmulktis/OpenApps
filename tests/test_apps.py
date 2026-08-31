@@ -25,9 +25,6 @@ from open_apps.apps.start_page.main import (
     app,
     initialize_routes_and_configure_task,
 )
-from open_apps.apps.start_page.helper import (
-    get_java_version,
-)
 
 
 @pytest.fixture(scope="module")
@@ -87,12 +84,11 @@ class TestApps:
         assert response.status_code == 200
 
     def test_onlineshop(self, client):
-        if get_java_version().startswith("21"):
-            response = client.get("/onlineshop")
-            assert response.status_code == 200
-        else:
-            # Skip the test if Java version is not 21 or higher
-            pytest.skip("Java version is not 21 or higher, skipping onlineshop test.")
+        # No longer gated on OpenJDK 21: the shop's search is SQLite FTS5 and
+        # its catalog is seeded from Hydra, so it runs anywhere the other apps
+        # do. See tests/test_onlineshop.py for its behaviour.
+        response = client.get("/onlineshop")
+        assert response.status_code == 200
 
 
 class TestTasks:
