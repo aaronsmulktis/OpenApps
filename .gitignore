@@ -207,3 +207,8 @@ internal-*
 # Never committed: two of this checkout's three remotes are public, and a
 # vendor's saved page carries their markup, stylesheets and fonts.
 .reference-*
+
+# Nested git worktrees. `git worktree add .claude/worktrees/<topic>` puts a
+# full checkout inside the repo, which otherwise shows up as untracked and a
+# stray `git add -A` would commit the entire tree.
+.claude/worktrees/
