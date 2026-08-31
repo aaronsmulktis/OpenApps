@@ -199,3 +199,8 @@ CLAUDE.md
 tests/generated_screenshots/.runtime/*
 
 internal-*
+
+# Nested git worktrees. `git worktree add .claude/worktrees/<topic>` puts a
+# full checkout inside the repo, which otherwise shows up as untracked and a
+# stray `git add -A` would commit the entire tree.
+.claude/worktrees/
