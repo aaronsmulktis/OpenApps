@@ -339,6 +339,49 @@ class TestVariations:
         assert client.get("/onlineshop").status_code == 200
 
 
+class TestProductImagery:
+    """Thumbnails are generated line art, not fetched images."""
+
+    @pytest.mark.parametrize(
+        "sku,glyph",
+        [
+            ("elec-hdph-001", "headphones"),
+            ("home-skil-103", "pan"),
+            ("furn-desk-205", "desk"),
+            # "LED Desk Lamp" and "Walnut Desk Organizer" both contain "desk";
+            # keyword order has to resolve them to their own glyphs.
+            ("offi-lamp-704", "lamp"),
+            ("offi-orgz-703", "organizer"),
+            # "Backpacking Tent" contains "backpack".
+            ("outd-tent-401", "tent"),
+            ("groc-oliv-603", "oil"),
+        ],
+    )
+    def test_products_get_the_right_glyph(self, client, sku, glyph):
+        product = shop._row(shop.products, sku)
+        assert shop._glyph_for(product) is shop._GLYPHS[glyph]
+
+    def test_every_product_resolves_to_a_glyph(self, client):
+        for product in shop.products():
+            assert shop._glyph_for(product), product.title
+
+    def test_unknown_category_still_renders(self, client):
+        """A product added to the config with no matching keyword must not 500."""
+        product = shop._row(shop.products, "elec-hdph-001")
+        product.title, product.category = "Nondescript Widget", "not_a_category"
+        assert shop._glyph_for(product)
+        assert "<svg" in str(shop.product_image(product))
+
+    def test_thumbnail_is_inline_svg_with_no_src(self, client):
+        body = client.get("/onlineshop").text
+        assert "<svg" in body
+        assert "<img" not in body.split("</head>")[-1] or "media-amazon" not in body
+
+    def test_hue_is_stable_for_a_sku(self, client):
+        product = shop._row(shop.products, "elec-hdph-001")
+        assert str(shop.product_image(product)) == str(shop.product_image(product))
+
+
 class TestNoEgress:
     """The old shop pointed every thumbnail at an Amazon CDN URL."""
 

@@ -40,7 +40,7 @@ from datetime import datetime
 
 from fasthtml.common import *
 # Svg/Rect/Text are not re-exported by fasthtml.common.
-from fasthtml.svg import Rect, Svg, Text
+from fasthtml.svg import Circle, G, Path, Rect, Svg
 
 from src.open_apps.apps.start_page.helper import create_logo_header
 from src.open_apps.frontend import local_hdrs
@@ -526,26 +526,154 @@ def paginate(items: list, page: int) -> list:
 # distinct image with no files and no requests.
 _SWATCH_HUES = (12, 38, 64, 96, 140, 175, 205, 232, 262, 291, 318, 344)
 
+# Line-art glyphs, each drawn inside a 100x100 box. An entry is either a path
+# `d` string or a ("c", cx, cy, r) circle. Stroke-only, so a glyph inherits the
+# swatch's foreground colour and stays legible at 72px in the cart.
+_GLYPHS: dict[str, list] = {
+    # electronics
+    "headphones": ["M22 64 V50 a28 28 0 0 1 56 0 V64",
+                   "M15 62 h15 v25 h-15 z", "M70 62 h15 v25 h-15 z"],
+    "monitor": ["M14 24 h72 v44 h-72 z", "M50 68 v10", "M34 82 h32"],
+    "keyboard": ["M12 36 h76 v34 h-76 z",
+                 "M22 46 h8 M38 46 h8 M54 46 h8 M70 46 h8", "M32 60 h36"],
+    "speaker": ["M28 14 h44 v72 h-44 z", ("c", 50, 36, 11), ("c", 50, 65, 7)],
+    "hub": ["M18 46 h64 v20 h-64 z", "M32 46 v-16 M50 46 v-22 M68 46 v-16"],
+    # home & kitchen
+    "pan": ["M18 44 h50 v28 a12 12 0 0 1 -12 12 h-26 a12 12 0 0 1 -12 -12 z",
+            "M68 52 h18", "M14 44 h58"],
+    "mug": ["M24 38 h40 v34 a10 10 0 0 1 -10 10 h-20 a10 10 0 0 1 -10 -10 z",
+            "M64 46 h8 a11 11 0 0 1 0 22 h-8",
+            "M36 28 q5 -8 0 -15 M52 28 q5 -8 0 -15"],
+    "kettle": ["M30 46 h34 v28 a10 10 0 0 1 -10 10 h-14 a10 10 0 0 1 -10 -10 z",
+               "M64 52 q17 -5 14 -24", "M36 46 q13 -18 26 0"],
+    "board": ["M26 18 h40 a8 8 0 0 1 8 8 v48 a8 8 0 0 1 -8 8 h-40 a8 8 0 0 1 -8 -8 "
+              "v-48 a8 8 0 0 1 8 -8 z", ("c", 46, 30, 4)],
+    # furniture
+    "table": ["M12 40 h76", "M24 40 v36 M76 40 v36"],
+    "chair": ["M32 16 v42 M68 16 v42", "M24 58 h52", "M32 58 v26 M68 58 v26",
+              "M32 30 h36"],
+    "shelf": ["M22 14 h56 v72 h-56 z", "M22 38 h56 M22 62 h56"],
+    "desk": ["M14 38 h72", "M50 38 v36", "M32 80 h36"],
+    # apparel
+    "shirt": ["M36 18 l-20 12 l10 14 l10 -6 v44 h28 v-44 l10 6 l10 -14 l-20 -12 z",
+              "M42 18 q8 10 16 0"],
+    "jacket": ["M36 18 l-20 12 l10 14 l10 -6 v44 h28 v-44 l10 6 l10 -14 l-20 -12 z",
+               "M50 32 v50"],
+    "shoe": ["M14 68 h58 a12 12 0 0 0 12 -11 l-24 -22 l-10 8 l-14 -6 l-22 10 z",
+             "M40 46 l9 7 M50 41 l9 7"],
+    "scarf": ["M30 20 q20 14 40 0", "M34 36 q16 12 32 0", "M40 50 v32 M60 50 v32"],
+    # outdoors
+    "tent": ["M12 78 L50 20 L88 78 z", "M50 78 L38 46 M50 78 L62 46"],
+    "sleepingbag": ["M32 18 h36 a10 10 0 0 1 10 10 v42 a16 16 0 0 1 -16 16 h-24 "
+                    "a16 16 0 0 1 -16 -16 v-42 a10 10 0 0 1 10 -10 z", "M60 22 v60"],
+    "poles": ["M34 16 v68 M66 16 v68", "M28 16 h12 M60 16 h12"],
+    "bottle": ["M42 14 h16 v14 l7 12 v48 a7 7 0 0 1 -7 7 h-16 a7 7 0 0 1 -7 -7 "
+               "v-48 l7 -12 z", "M35 56 h30"],
+    "backpack": ["M26 34 h48 v46 a7 7 0 0 1 -7 7 h-34 a7 7 0 0 1 -7 -7 z",
+                 "M38 34 q12 -20 24 0", "M36 60 h28 v20 h-28 z"],
+    # beauty
+    "dropper": ["M38 40 h24 v34 a9 9 0 0 1 -9 9 h-6 a9 9 0 0 1 -9 -9 z",
+                "M44 40 v-18 h12 v18", "M44 16 h12"],
+    "jar": ["M30 46 h40 v28 a9 9 0 0 1 -9 9 h-22 a9 9 0 0 1 -9 -9 z",
+            "M26 32 h48 v14 h-48 z"],
+    "tube": ["M38 34 h24 v42 a9 9 0 0 1 -9 9 h-6 a9 9 0 0 1 -9 -9 z",
+             "M42 20 h16 v14 h-16 z", "M38 34 h24"],
+    # grocery
+    "beans": [("c", 40, 42, 13), "M40 29 q7 13 0 26", ("c", 62, 64, 13),
+              "M62 51 q7 13 0 26"],
+    "tin": ["M32 32 h36 v52 h-36 z", "M28 20 h44 v12 h-44 z", "M32 56 h36"],
+    "oil": ["M44 14 h12 v18 l8 12 v42 h-28 v-42 l8 -12 z", "M36 60 h28"],
+    "honey": ["M32 40 h36 v34 a9 9 0 0 1 -9 9 h-18 a9 9 0 0 1 -9 -9 z",
+              "M32 40 q18 -14 36 0", "M40 56 h20"],
+    "chocolate": ["M22 28 h56 v46 h-56 z", "M22 51 h56 M41 28 v46 M59 28 v46"],
+    # office
+    "notebook": ["M28 16 h44 v70 h-44 z", "M37 16 v70",
+                 "M45 34 h20 M45 48 h20 M45 62 h20"],
+    "pen": ["M60 16 l24 24 l-44 44 l-24 -24 z", "M16 60 l-4 30 l30 -4",
+            "M52 24 l24 24"],
+    "organizer": ["M18 40 h64 v40 h-64 z", "M40 40 v40 M60 40 v40",
+                  "M26 40 v-14 M32 40 v-18"],
+    "lamp": ["M32 20 h36 l10 22 h-56 z", "M50 42 v34", "M32 82 h36"],
+    "shredder": ["M18 30 h64 v24 h-64 z", ("c", 70, 42, 4),
+                 "M30 62 v22 M42 62 v16 M54 62 v22 M66 62 v16"],
+}
+
+# Title keyword -> glyph. First match wins, so order matters where a title
+# could hit two entries ("standing desk" must beat nothing, "dining table"
+# must not be caught by a later, broader word).
+_GLYPH_KEYWORDS: tuple[tuple[str, str], ...] = (
+    ("headphone", "headphones"), ("monitor", "monitor"), ("keyboard", "keyboard"),
+    ("speaker", "speaker"), ("hub", "hub"),
+    ("cookware", "pan"), ("skillet", "pan"), ("pour-over", "mug"), ("coffee set", "mug"),
+    ("kettle", "kettle"), ("cutting board", "board"),
+    ("dining table", "table"), ("office chair", "chair"), ("armchair", "chair"),
+    # "desk" is deliberately late: "Desk Organizer" and "LED Desk Lamp" both
+    # contain it and must not be caught by the standing-desk entry.
+    ("bookcase", "shelf"), ("desk organizer", "organizer"), ("lamp", "lamp"),
+    ("desk", "desk"),
+    ("sweater", "shirt"), ("shirt", "shirt"), ("jacket", "jacket"),
+    ("shoes", "shoe"), ("scarf", "scarf"),
+    ("tent", "tent"), ("sleeping bag", "sleepingbag"), ("poles", "poles"),
+    ("water bottle", "bottle"), ("daypack", "backpack"), ("backpack", "backpack"),
+    ("serum", "dropper"), ("cleanser", "tube"), ("sunscreen", "tube"),
+    ("hair treatment", "dropper"), ("mask", "jar"),
+    ("coffee beans", "beans"), ("matcha", "tin"), ("olive oil", "oil"),
+    ("honey", "honey"), ("chocolate", "chocolate"),
+    ("notebook", "notebook"), ("pen", "pen"), ("lamp", "lamp"),
+    ("shredder", "shredder"),
+)
+
+# Fallback when no keyword matches, so a product added to the config without a
+# matching keyword still gets something category-appropriate rather than a blank.
+_CATEGORY_GLYPHS: dict[str, str] = {
+    "electronics": "monitor",
+    "home_kitchen": "mug",
+    "furniture": "chair",
+    "apparel": "shirt",
+    "outdoors": "backpack",
+    "beauty": "jar",
+    "grocery": "tin",
+    "office": "notebook",
+}
+
+
+def _glyph_for(product) -> list:
+    title = product.title.lower()
+    for keyword, glyph in _GLYPH_KEYWORDS:
+        if keyword in title:
+            return _GLYPHS[glyph]
+    return _GLYPHS[_CATEGORY_GLYPHS.get(product.category, "notebook")]
+
 
 def product_image(product, size: int = 120):
+    """A deterministic line-art thumbnail for a product.
+
+    Generated rather than fetched: the original pointed every thumbnail at an
+    Amazon CDN URL, which is outbound network the eval nodes do not have (and
+    which `tests/test_no_egress.py` exists to prevent). Drawing the product
+    category instead of the old initials makes a listing scan like a shop
+    rather than a spreadsheet, while staying deterministic, dependency-free
+    and about 2kB.
+
+    Hue is keyed on the sku so a product's colour is stable across pages and
+    two products in the same category still look distinct.
+    """
     hue = _SWATCH_HUES[sum(product.sku.encode()) % len(_SWATCH_HUES)]
-    initials = "".join(word[0] for word in product.title.split()[:2]).upper()
+    stroke = f"hsl({hue}, 55%, 28%)"
+    marks = []
+    for item in _glyph_for(product):
+        if isinstance(item, tuple):
+            _, cx, cy, r = item
+            marks.append(Circle(cx=cx, cy=cy, r=r, fill="none", stroke=stroke,
+                                stroke_width=5))
+        else:
+            marks.append(Path(d=item, fill="none", stroke=stroke, stroke_width=5,
+                              stroke_linecap="round", stroke_linejoin="round"))
     return Svg(
-        Rect(
-            x=0, y=0, width=size, height=size, rx=10,
-            fill=f"hsl({hue}, 42%, 82%)",
-        ),
-        Text(
-            initials,
-            x=size / 2, y=size / 2,
-            fill=f"hsl({hue}, 55%, 28%)",
-            font_size=size * 0.34,
-            font_family="var(--font-family)",
-            text_anchor="middle",
-            dominant_baseline="central",
-        ),
+        Rect(x=0, y=0, width=100, height=100, rx=10, fill=f"hsl({hue}, 42%, 88%)"),
+        G(*marks),
         width=size, height=size,
-        viewBox=f"0 0 {size} {size}",
+        viewBox="0 0 100 100",
         role="img",
         aria_label=product.title,
         cls="product-thumb",
