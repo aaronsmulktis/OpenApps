@@ -21,6 +21,8 @@ from open_apps.theme import (
     load_theme,
     render_theme_tokens,
     resolve_theme,
+    theme_asset,
+    theme_assets,
     theme_style,
 )
 
@@ -45,7 +47,64 @@ class TestLoadTheme:
 
     def test_always_has_required_keys(self):
         theme = load_theme("dark")
-        assert set(theme) >= {"name", "tokens", "import_url"}
+        assert set(theme) >= {"name", "tokens", "import_url", "assets"}
+
+
+class TestTokenVocabulary:
+    """Every theme must declare the same tokens.
+
+    Apps use `var(--token)` without knowing which theme is active, so a theme
+    that omits one renders that property as an empty value -- an invisible
+    button rather than a loud failure.
+    """
+
+    THEMES = [
+        "default", "dark", "mono", "challenging_font",
+        "colorblind", "solarized", "material", "bootstrap",
+    ]
+
+    def test_all_themes_declare_the_default_vocabulary(self):
+        expected = set(load_theme("default")["tokens"])
+        for name in self.THEMES:
+            assert set(load_theme(name)["tokens"]) == expected, name
+
+    def test_dark_theme_is_actually_dark(self):
+        """Regression: `dark` was a port of todo's local variant and had a
+        white background with white foreground text."""
+        tokens = load_theme("dark")["tokens"]
+        assert tokens["color-bg"] != tokens["color-fg"]
+
+    def test_no_theme_has_invisible_body_text(self):
+        for name in self.THEMES:
+            tokens = load_theme(name)["tokens"]
+            assert tokens["color-bg"] != tokens["color-fg"], name
+
+
+class TestThemeAssets:
+
+    def test_defaults_when_theme_omits_assets(self):
+        cfg = OmegaConf.create({"theme": {"name": "x", "tokens": {}}, "todo": {}})
+        assert theme_assets(cfg, "todo") == {"tone": "light", "icon_set": "color"}
+
+    def test_reads_assets_from_the_theme_file(self):
+        cfg = OmegaConf.create({"theme": "dark", "maps": {}})
+        assert theme_assets(cfg, "maps")["tone"] == "dark"
+        assert theme_assets(cfg, "maps")["icon_set"] == "bw"
+
+    def test_partial_assets_are_filled_from_defaults(self):
+        cfg = OmegaConf.create(
+            {"theme": {"name": "x", "tokens": {}, "assets": {"tone": "dark"}}}
+        )
+        assert theme_assets(cfg, "todo") == {"tone": "dark", "icon_set": "color"}
+
+    def test_follows_per_app_theme_override(self):
+        cfg = OmegaConf.create({"theme": "default", "maps": {"theme": "dark"}})
+        assert theme_asset(cfg, "maps", "tone") == "dark"
+        assert theme_asset(cfg, "calendar", "tone") == "light"
+
+    def test_unknown_key_returns_default(self):
+        cfg = OmegaConf.create({"theme": "default"})
+        assert theme_asset(cfg, "todo", "no_such_key", "fallback") == "fallback"
 
 
 class TestResolveTheme:
