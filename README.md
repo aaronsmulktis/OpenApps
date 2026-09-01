@@ -81,25 +81,20 @@ Learn more about launching with OpenAI, Claude, and VLLM models such as UI-Tars 
 
 ## Environment variables
 
-`launch_agent.py` and `launch_parallel_agents.py` call `load_dotenv()`, so a `.env` file at
-the repo root is picked up automatically (`.env` is git-ignored — keep keys out of configs):
+Copy [`.env.example`](.env.example) and fill in what you need — `launch_agent.py` and
+`launch_parallel_agents.py` call `load_dotenv()`, so a `.env` at the repo root is picked up
+automatically, and `.env` is git-ignored so keys stay out of the configs:
 
 ```bash
-cat > .env <<'EOF'
-GPT55_API_KEY=...
-WANDB_API_KEY=...
-WANDB_BASE_URL=...       # only for a self-hosted W&B server
-EOF
+cp .env.example .env
 ```
 
 | Variable | Read by | Purpose |
 | --- | --- | --- |
 | `USER` | `config/config*.yaml`, `config/mode/*` | W&B `entity` and the `logs_dir` path |
 | `GPT55_API_KEY` | `config/agent/GPT-5.5-*.yaml` | key for the OpenAI-compatible endpoint |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | `config/agent/claude_4_sonnet.yaml` (`client_type: aws`) | Bedrock credentials, when not set in the config |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | `config/agent/claude_4_sonnet.yaml` (`client_type: aws`) | Bedrock credentials, when left null in the config |
 | `WANDB_API_KEY`, `WANDB_BASE_URL`, `WANDB_MODE` | `wandb` | auth, self-hosted server, and `WANDB_MODE=offline` to skip online logging |
-| `EXPERIMENT_CONFIG_PATH` | `src/open_apps/configs.py` | load a saved config YAML instead of composing the Hydra defaults |
-| `OPENAPPS_APP`, `OPENAPPS_MCP_HOST`, `OPENAPPS_MCP_PORT` | `src/open_apps/mcp/` | app served by the MCP server, and its bind address |
 
 Agent API keys are read through Hydra interpolation, so any variable name works — point the
 agent's `api_key` at the one you use:
@@ -108,9 +103,11 @@ agent's `api_key` at the one you use:
 uv run launch_agent.py agent=GPT-5.5-computer-use 'agent.api_key=${oc.env:OPENAI_API_KEY}'
 ```
 
-The batch scripts are configured entirely by environment:
+The batch scripts and the MCP server take environment variables too, but they are read by
+the shell (or by an MCP client's `env` block), **not** through `.env` — export them at the
+call site, or `set -a; source .env; set +a` first:
 
-| Variable | Script | Default |
+| Variable | Read by | Default |
 | --- | --- | --- |
 | `AGENTS` | `scripts/conduct.sh` | `dummy` — space-separated `config/agent/<name>` stems, used round-robin |
 | `COUNT` | `scripts/conduct.sh` | number of agents — total runs to launch |
@@ -119,6 +116,7 @@ The batch scripts are configured entirely by environment:
 | `LOG_DIR`, `WANDB_GROUP` | `scripts/conduct.sh` | `log_outputs`, `batch-<timestamp>` |
 | `VLLM_MODEL`, `VLLM_PORT` | `scripts/conduct_slurm.sh` | the `served_model_name` and port to look for |
 | `VLLM_HOST` | `scripts/conduct_slurm.sh` | unset — pin a node to skip auto-discovery |
+| `OPENAPPS_APP`, `OPENAPPS_MCP_HOST`, `OPENAPPS_MCP_PORT` | `src/open_apps/mcp/server.py` | `todo`, `127.0.0.1`, `8000` — also settable as `python -m open_apps.mcp --app/--host/--port` |
 
 ## Running on SLURM
 
