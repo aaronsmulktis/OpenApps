@@ -55,6 +55,45 @@ uv run launch.py app.todo.title='Super Todo'
 Learn more about to customize the content and appearance of apps in the [docs](https://facebookresearch.github.io/OpenApps/). 
 
 
+## The online shop
+
+The shop is on by default at `/onlineshop`, with no setup step — no JDK, no
+dataset download. (It previously required OpenJDK 21 and a Google Drive
+download; see [Installation](docs/installation.md) if you are following an
+older guide.)
+
+```bash
+uv run launch.py                                # shop included
+uv run launch.py apps.onlineshop.enable=False   # turn it off
+```
+
+It varies like every other app, with a `layout` axis of its own:
+
+```bash
+uv run launch.py apps/onlineshop/layout=grid      # default | grid | compact_table
+uv run launch.py apps/onlineshop/content=german
+uv run launch.py apps/theme=solarized             # or apps.onlineshop.theme=...
+```
+
+**Architecture.** The catalog is seeded from
+`config/apps/onlineshop/content/default.yaml` (40 products, 8 categories) into
+a SQLite database on launch, so the catalog is a content variation axis like
+any other text in OpenApps. Search is SQLite **FTS5** using its built-in
+`bm25()` ranking — FTS5 ships inside Python's `sqlite3`, so relevance ranking
+costs no dependency. State lives in four plain tables (`products`,
+`cart_items`, `orders`, `order_items`) and is served as JSON at
+`/onlineshop_all`, which is what rewards are computed from. Pages are FastHTML
+rendered against the shared design tokens, and product images are generated
+inline SVG, so the app makes no outbound requests.
+
+**Inspecting its data.** Every launch writes a fresh database under that run's
+`log_outputs`, so the newest one is the run you were just clicking through:
+
+```bash
+DB=$(ls -t log_outputs/*/databases/onlineshop.db | head -1)
+sqlite3 -header -column "$DB" "SELECT * FROM cart_items;"
+```
+
 
 ## Launch an Agent
 
