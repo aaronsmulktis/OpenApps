@@ -1,6 +1,10 @@
 # @package apps.start_page
+# Each app's in-page logo header becomes a link back to the start page,
+# adding a navigation affordance that does not exist by default.
 defaults:
   - default
+
+layout: clickable_logos
 apps:
   todo:
     clickable_logo: true
