@@ -159,7 +159,6 @@ class AppServer:
         *,
         theme: str | None = None,
         layout: str | None = None,
-        appearance: str | None = None,
         content: str | None = None,
         seed: int | None = None,
         extras: dict[str, Any] | None = None,
@@ -178,9 +177,6 @@ class AppServer:
             layout: Per-app structure variant stem under
                 ``config/apps/<app>/layout/`` for ``self.app_name``
                 (e.g. ``kanban_board``).
-            appearance: Legacy per-app variant stem under
-                ``config/apps/<app>/appearance/`` for apps not yet migrated
-                to the theme/layout split.
             content: Variant yaml stem under
                 ``config/apps/<app>/content/`` for ``self.app_name``.
             seed: Fresh integer seed for the OpenApps content samplers.
@@ -194,8 +190,6 @@ class AppServer:
             overrides.append(f"apps/theme={theme}")
         if layout is not None:
             overrides.append(f"apps/{cfg_dir}/layout={layout}")
-        if appearance is not None:
-            overrides.append(f"apps/{cfg_dir}/appearance={appearance}")
         if content is not None:
             overrides.append(f"apps/{cfg_dir}/content={content}")
         if seed is not None:
@@ -214,7 +208,7 @@ class AppServer:
         # Routes read ``app.config`` per request, but the assignment above
         # rebinds ``self.config.apps`` to a fresh node — so re-point the
         # FastHTML app at it, otherwise the page keeps rendering the
-        # pre-reconfigure appearance/content.
+        # pre-reconfigure theme/layout/content.
         _fasthtml_app.config = self.config.apps
 
         shutil.rmtree(new_tmp_logs, ignore_errors=True)

@@ -25,7 +25,6 @@ from dataclasses import dataclass
 
 from playwright.async_api import async_playwright
 
-from open_apps import device as device_module
 from open_apps.mcp.actions import execute
 from open_apps.mcp.appserver import AppServer
 
@@ -107,32 +106,18 @@ class Session:
         *,
         port: int | None = None,
         host: str = "127.0.0.1",
-        viewport: tuple[int, int] | None = None,
-        device: str | None = None,
+        viewport: tuple[int, int] = (1024, 640),
         task=None,
         settle_ms: int = 150,
         extra_overrides: list[str] | None = None,
     ) -> None:
-        """
-        Args:
-            device: a ``config/device/`` option name (``phone``, ``tablet``,
-                ...). Selected as a Hydra override so the *apps* see it too --
-                a phone-sized browser showing the desktop layout would be
-                measuring the wrong thing. Both halves have to move together.
-            viewport: explicit ``(width, height)``, overriding the device's own.
-                Rarely wanted; the default without a device is the historical
-                1024x640.
-        """
         self.app_name = app_name
         self.port = port
         self.host = host
         self.viewport = viewport
-        self.device_name = device
         self.task = task
         self.settle_ms = settle_ms
-        self.extra_overrides = list(extra_overrides or [])
-        if device:
-            self.extra_overrides.append(f"device={device}")
+        self.extra_overrides = extra_overrides
 
         self.appserver: AppServer | None = None
         self.page = None
@@ -164,18 +149,9 @@ class Session:
             headless=True,
             args=["--no-sandbox", "--disable-dev-shm-usage"],
         )
-        # The device node comes back resolved on the app server's own config,
-        # so the browser and the pages it loads cannot disagree about what
-        # they are running on.
-        device_cfg = device_module.from_config(self.appserver.config)
-        w, h = self.viewport or (
-            device_module.viewport(self.appserver.config)
-            if self.device_name
-            else (1024, 640)
-        )
+        w, h = self.viewport
         self._context = await self._browser.new_context(
-            viewport={"width": w, "height": h},
-            **device_module.context_kwargs(device_cfg if self.device_name else None),
+            viewport={"width": w, "height": h}
         )
         self.page = await self._context.new_page()
         self._started = True
@@ -234,7 +210,6 @@ class Session:
         *,
         theme: str | None = None,
         layout: str | None = None,
-        appearance: str | None = None,
         content: str | None = None,
         seed: int | None = None,
         extras: dict | None = None,
@@ -244,7 +219,6 @@ class Session:
             self.appserver.reconfigure,
             theme=theme,
             layout=layout,
-            appearance=appearance,
             content=content,
             seed=seed,
             extras=extras,

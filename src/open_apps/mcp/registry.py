@@ -48,7 +48,7 @@ def config_dir_for(app_name: str) -> str:
 
 
 def list_variants(app_name: str, group: str) -> list[str]:
-    """List Hydra variant yamls for a group (``theme``/``layout``/``content``/``appearance``).
+    """List Hydra variant yamls for a group (``theme``/``layout``/``content``).
 
     Returns a sorted list of variant stems (without ``.yaml``).
     ``"default"`` is forced to index 0 when present so it has a stable

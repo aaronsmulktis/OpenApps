@@ -1,9 +1,6 @@
 defaults:
   - content: default
-  # Legacy appearance group. It still supplies the editor's non-colour
-  # settings (font size, highlight, modes); all colours and fonts now come
-  # from the shared design tokens in config/apps/theme/.
-  - appearance: default
+  - layout: default
 
 database_path: ${databases_dir}/codeeditor
 
@@ -38,3 +35,31 @@ list_of_themes:
   - solarized
   - material
   - mono
+
+# --- Behaviour -------------------------------------------------------------
+# Not theme and not layout: these change what the editor *does*. They used to
+# come from the `appearance` group, which conflated all three.
+
+# Language mode the editor starts in.
+mode: "python"
+# Load CodeMirror at all. False renders a plain <textarea> -- a meaningfully
+# different observation for an agent, so it is behaviour, not appearance.
+highlight: False
+# Sort the mode/theme dropdowns alphabetically instead of config order.
+sort_feature: True
+list_of_modes:
+  - python
+  - javascript
+  - css
+  - yaml
+  - markdown
+  - shell
+  - clike
+  - go
+
+# Fallback arms only. Every rule that reads these is written as
+# `var(--token, <this value>)`, so they are what renders if a theme omits the
+# corresponding token -- never the primary source. Change the theme, not these.
+font: "Arial"
+font_size: 12
+fontcolor: ""

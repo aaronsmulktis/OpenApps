@@ -31,6 +31,7 @@ from hydra import compose, initialize
 from starlette.testclient import TestClient
 
 from open_apps.apps.codeeditor_app import main as codeeditor_main
+from open_apps.theme import load_theme, resolve_theme
 from open_apps.apps.start_page.main import app, initialize_routes_and_configure_task
 
 
@@ -205,20 +206,37 @@ def test_sidebar_width_survives_without_tailwind(editor_html):
 
 
 # ---------------------------------------------------------------------------
-# Legacy appearance presets still work
+# Every shipped theme works for this app
 # ---------------------------------------------------------------------------
+#
+# Replaces a test that composed the `appearance` presets. That group is gone --
+# look now comes from the shared theme -- so the equivalent guard is that every
+# theme the in-editor selector can offer actually resolves.
 
 @pytest.mark.parametrize(
-    "preset", ["default", "dark_theme", "black_and_white", "colorblind_access"]
+    "theme", ["vscode_dark", "default", "dark", "solarized", "material", "mono"]
 )
-def test_legacy_presets_still_compose(preset):
-    """They predate the new keys and must fall back, not raise."""
+def test_every_offered_theme_composes(theme):
+    """The selector lists design themes; each must resolve, not raise."""
     with initialize(version_base=None, config_path="../config/"):
         config = compose(
-            config_name="config",
-            overrides=[f"apps/code_editor/appearance={preset}"],
+            config_name="config", overrides=[f"apps.code_editor.theme={theme}"]
         )
-    assert "sidebar_background_color" not in config.apps.code_editor
+    assert config.apps.code_editor.theme == theme
+    resolved = resolve_theme(config.apps, "code_editor")
+    assert resolved["name"] == theme
+    # The editor paints its chrome from these two; a theme missing either
+    # would render an unstyled pane rather than fail loudly.
+    assert resolved["tokens"]["color-bg"]
+    assert resolved["tokens"]["color-fg"]
+
+
+def test_selector_offers_only_themes_that_exist():
+    """A name in `list_of_themes` with no yaml silently falls back to default."""
+    with initialize(version_base=None, config_path="../config/"):
+        config = compose(config_name="config")
+    for name in config.apps.code_editor.list_of_themes:
+        assert load_theme(name)["name"] == name, f"{name} has no theme file"
 
 
 # ---------------------------------------------------------------------------

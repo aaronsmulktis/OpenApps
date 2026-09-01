@@ -1,5 +1,6 @@
 # @package apps.start_page
 # The original html5up "Story" tile gallery. Default, so existing tasks, the
 # start-page reference screenshot and any prompt describing tiles keep working
-# unchanged.
+# unchanged. The tile inventory and geometry come from
+# `config/apps/start_page/default.yaml`; this only names the composition.
 layout: gallery

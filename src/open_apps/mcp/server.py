@@ -14,9 +14,7 @@ Observations are returned vision-first: a screenshot image content block
 plus a JSON metadata blob ``{url, reward, done, step_count, action_desc}``.
 
 Configure via env (set by ``__main__``): ``OPENAPPS_APP`` (which app to
-serve), ``OPENAPPS_DEVICE`` (a ``config/device/`` option -- browser size,
-input model and the layout the apps render), ``OPENAPPS_MCP_HOST`` /
-``OPENAPPS_MCP_PORT`` (HTTP/SSE bind).
+serve), ``OPENAPPS_MCP_HOST`` / ``OPENAPPS_MCP_PORT`` (HTTP/SSE bind).
 """
 
 from __future__ import annotations
@@ -51,7 +49,7 @@ def _require() -> Session:
 async def _lifespan(_server):
     global _session
     app_name = os.environ.get("OPENAPPS_APP", "todo")
-    _session = Session(app_name, device=os.environ.get("OPENAPPS_DEVICE") or None)
+    _session = Session(app_name)
     await _session.start()
     try:
         yield
@@ -90,21 +88,18 @@ async def reset(seed: int | None = None):
 async def reconfigure(
     theme: str | None = None,
     layout: str | None = None,
-    appearance: str | None = None,
     content: str | None = None,
     seed: int | None = None,
     extras: dict | None = None,
 ) -> str:
     """Swap theme/layout/content variant and seed (live) and re-seed app state.
 
-    `theme` is the shared design-token theme (global); `layout` is the per-app
-    structure; `appearance` is the legacy per-app variant for apps not yet
-    migrated to the theme/layout split.
+    `theme` is the shared design-token theme and applies to every app;
+    `layout` and `content` are per-app.
     """
     await _require().reconfigure(
         theme=theme,
         layout=layout,
-        appearance=appearance,
         content=content,
         seed=seed,
         extras=extras,
@@ -204,7 +199,7 @@ async def list_apps() -> list[str]:
 
 @mcp.tool()
 async def list_variants(app: str, group: str) -> list[str]:
-    """Variant stems for an app's ``appearance`` or ``content`` group."""
+    """Variant stems for a group: ``theme`` (shared), ``layout`` or ``content``."""
     return _list_variants(app, group)
 
 

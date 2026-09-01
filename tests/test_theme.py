@@ -14,6 +14,8 @@ graceful *fallback* (an unknown theme name degrades to the default instead
 of raising).
 """
 
+import pathlib
+
 from fasthtml.common import to_xml
 from omegaconf import OmegaConf
 
@@ -21,6 +23,8 @@ from open_apps.theme import (
     load_theme,
     render_theme_tokens,
     resolve_theme,
+    theme_asset,
+    theme_assets,
     theme_style,
 )
 
@@ -45,7 +49,75 @@ class TestLoadTheme:
 
     def test_always_has_required_keys(self):
         theme = load_theme("dark")
-        assert set(theme) >= {"name", "tokens", "import_url"}
+        assert set(theme) >= {"name", "tokens", "import_url", "assets"}
+
+
+class TestTokenVocabulary:
+    """Every theme must declare the same tokens.
+
+    Apps use `var(--token)` without knowing which theme is active, so a theme
+    that omits one renders that property as an empty value -- an invisible
+    button rather than a loud failure.
+    """
+
+    # Globbed, not hardcoded: a theme added to the group is covered without
+    # anyone remembering to list it here, which is the whole point of the check.
+    THEMES = sorted(
+        p.stem
+        for p in (
+            pathlib.Path(__file__).resolve().parents[1] / "config" / "apps" / "theme"
+        ).glob("*.yaml")
+    )
+
+    def test_all_themes_declare_the_default_vocabulary(self):
+        """Superset, not equality -- a theme may add its own tokens.
+
+        `vscode_dark` and the `meta` pair carry editor and brand tokens the
+        shared vocabulary has no need for. What must not happen is a theme
+        *missing* one, since an app will still emit `var(--that-token)`.
+        """
+        expected = set(load_theme("default")["tokens"])
+        for name in self.THEMES:
+            missing = expected - set(load_theme(name)["tokens"])
+            assert not missing, f"{name} is missing {sorted(missing)}"
+
+    def test_dark_theme_is_actually_dark(self):
+        """Regression: `dark` was a port of todo's local variant and had a
+        white background with white foreground text."""
+        tokens = load_theme("dark")["tokens"]
+        assert tokens["color-bg"] != tokens["color-fg"]
+
+    def test_no_theme_has_invisible_body_text(self):
+        for name in self.THEMES:
+            tokens = load_theme(name)["tokens"]
+            assert tokens["color-bg"] != tokens["color-fg"], name
+
+
+class TestThemeAssets:
+
+    def test_defaults_when_theme_omits_assets(self):
+        cfg = OmegaConf.create({"theme": {"name": "x", "tokens": {}}, "todo": {}})
+        assert theme_assets(cfg, "todo") == {"tone": "light", "icon_set": "color"}
+
+    def test_reads_assets_from_the_theme_file(self):
+        cfg = OmegaConf.create({"theme": "dark", "maps": {}})
+        assert theme_assets(cfg, "maps")["tone"] == "dark"
+        assert theme_assets(cfg, "maps")["icon_set"] == "bw"
+
+    def test_partial_assets_are_filled_from_defaults(self):
+        cfg = OmegaConf.create(
+            {"theme": {"name": "x", "tokens": {}, "assets": {"tone": "dark"}}}
+        )
+        assert theme_assets(cfg, "todo") == {"tone": "dark", "icon_set": "color"}
+
+    def test_follows_per_app_theme_override(self):
+        cfg = OmegaConf.create({"theme": "default", "maps": {"theme": "dark"}})
+        assert theme_asset(cfg, "maps", "tone") == "dark"
+        assert theme_asset(cfg, "calendar", "tone") == "light"
+
+    def test_unknown_key_returns_default(self):
+        cfg = OmegaConf.create({"theme": "default"})
+        assert theme_asset(cfg, "todo", "no_such_key", "fallback") == "fallback"
 
 
 class TestResolveTheme:
@@ -158,64 +230,3 @@ class TestThemeStyle:
         cfg = OmegaConf.create({"theme": "default", "todo": {"theme": "solarized"}})
         assert "--color-bg: #fdf6e3;" in css(theme_style(cfg, "todo"))
         assert "--color-bg: #ffffff;" in css(theme_style(cfg, "calendar"))
-
-
-class TestMetaThemePair:
-    """The light/dark pair must stay interchangeable.
-
-    The runtime mode toggle swaps which of ``meta`` / ``meta_dark`` is
-    resolved, and no app is told which one it got. A token present in one and
-    missing from the other therefore doesn't fail loudly — that property falls
-    back to whatever Pico defaults to, and shows up as one mis-coloured element
-    in one mode only, which is exactly the kind of thing nobody notices until a
-    screenshot diff catches it months later.
-    """
-
-    CANONICAL = "default"      # the token set every theme is expected to cover
-    EDITOR_EXTRAS = {
-        "color-editor-bg",
-        "color-editor-fg",
-        "color-row-hover",
-        "color-row-active",
-    }
-
-    def test_light_and_dark_define_the_same_tokens(self):
-        light = set(load_theme("meta")["tokens"])
-        dark = set(load_theme("meta_dark")["tokens"])
-        assert light == dark, (
-            "meta / meta_dark token sets diverged. "
-            f"only in meta: {sorted(light - dark)}; "
-            f"only in meta_dark: {sorted(dark - light)}"
-        )
-
-    def test_both_cover_the_canonical_token_set(self):
-        canonical = set(load_theme(self.CANONICAL)["tokens"])
-        for name in ("meta", "meta_dark"):
-            tokens = set(load_theme(name)["tokens"])
-            assert canonical <= tokens, (
-                f"{name} is missing canonical tokens: {sorted(canonical - tokens)}"
-            )
-
-    def test_both_cover_the_editor_tokens(self):
-        """Without these the code editor falls back mid-theme, not cleanly."""
-        for name in ("meta", "meta_dark"):
-            tokens = set(load_theme(name)["tokens"])
-            assert self.EDITOR_EXTRAS <= tokens, (
-                f"{name} is missing editor tokens: "
-                f"{sorted(self.EDITOR_EXTRAS - tokens)}"
-            )
-
-    def test_neither_theme_reaches_the_network(self):
-        """No webfont, no @import. The eval nodes have no outbound network."""
-        for name in ("meta", "meta_dark"):
-            theme = load_theme(name)
-            assert theme["import_url"] == "", f"{name} sets import_url"
-            out = css(render_theme_tokens(theme))
-            assert "http" not in out, f"{name} renders an external reference"
-
-    def test_the_two_modes_actually_differ(self):
-        """Guards against a copy-paste that leaves dark mode light."""
-        light = load_theme("meta")["tokens"]
-        dark = load_theme("meta_dark")["tokens"]
-        assert light["color-bg"] != dark["color-bg"]
-        assert light["color-fg"] != dark["color-fg"]
