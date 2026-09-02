@@ -72,6 +72,7 @@ _FIELDS: dict[str, tuple[str, ...]] = {
     "category": ("category", "Category", "main_category"),
     "breadcrumb": ("product_category", "category_path", "breadcrumb"),
     "options": ("customization_options", "options", "Options"),
+    "images": ("images", "Images", "MainImage", "image_urls"),
 }
 
 # WebShop's top-level `category` is one of five coarse Amazon storefronts
@@ -122,6 +123,15 @@ MAX_BULLETS = 5
 MAX_DESCRIPTION = 400
 MAX_OPTION_GROUPS = 3
 MAX_OPTION_VALUES = 6
+# Carousel dots are styled with one CSS rule per position in the shop's
+# stylesheet; keep these in step.
+MAX_IMAGES = 4
+
+# Amazon serves a 1x1 transparent spacer in the image list of nearly every
+# record. It is not a product photo and would render as an empty carousel
+# slide, so it is dropped rather than counted.
+_PLACEHOLDER_IMAGE_RE = re.compile(r"transparent-pixel|/G/01/x-locale/", re.I)
+_IMAGE_EXT_RE = re.compile(r"\.(jpe?g|png|gif|webp)(\?|$)", re.I)
 
 
 def _get(record: dict, field: str):
@@ -221,6 +231,29 @@ def _options(record: dict) -> dict[str, list[str]]:
     return out
 
 
+def _images(record: dict) -> list[str]:
+    """Product photo URLs, deduplicated, spacers removed.
+
+    Kept in the pack so `apps.onlineshop.product_images=hotlink` has something
+    to render. They are inert under the default `glyphs` mode -- the shop
+    never emits an `<img>` for them -- but they do mean the generated file
+    contains amazon.com CDN links, which is the other reason it is gitignored.
+    """
+    raw = _get(record, "images") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    out = []
+    for value in raw:
+        url = str(value or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            continue
+        if _PLACEHOLDER_IMAGE_RE.search(url) or not _IMAGE_EXT_RE.search(url):
+            continue
+        if url not in out:
+            out.append(url)
+    return out[:MAX_IMAGES]
+
+
 def _rating(record: dict, synth: bool) -> float:
     raw = _get(record, "rating")
     if raw is not None:
@@ -260,9 +293,22 @@ def convert(records: list[dict], limit: int, synth_ratings: bool) -> list[dict]:
                 "options": _options(record),
                 "bullets": _bullets(record),
                 "description": _clean(_get(record, "description"))[:MAX_DESCRIPTION],
+                "images": _images(record),
             }
         )
     return products
+
+
+# Every field except `images` is rendered as text on a page, so a URL in any
+# of them would put a link on the page under either image mode. `images` is
+# the one place a URL is legitimate, and only `product_images=hotlink` emits it.
+_TEXT_FIELDS = ("sku", "title", "category", "breadcrumb", "bullets",
+                "description", "options")
+
+
+def url_leaks(product: dict) -> list[str]:
+    """Fields that wrongly contain a URL, for the pre-write check."""
+    return [f for f in _TEXT_FIELDS if _URL_RE.search(json.dumps(product[f]))]
 
 
 def glyph_report(products: list[dict]) -> tuple[Counter, int]:
@@ -386,11 +432,13 @@ def write_pack(products: list[dict], source_file: str, path: Path) -> None:
 #
 # Catalog built from {HF_REPO} ({source_file}), a mirror of the WebShop item
 # dump (Yao et al., 2022). These are scraped Amazon listings: the titles,
-# bullets and descriptions below are the retailer's own copy, which is why
-# this file is gitignored and lives only on the machine that generated it.
+# bullets and descriptions below are the retailer's own copy, and `images`
+# holds amazon.com CDN links. That is why this file is gitignored and lives
+# only on the machine that generated it.
 #
-# Image URLs from the source records are dropped on import. The shop draws
-# generated line art instead, so no page here reaches the network.
+# `images` is inert by default: the shop draws generated line art and emits no
+# <img> at all unless you opt in with `apps.onlineshop.product_images=hotlink`,
+# which makes every page reference that CDN.
 
 defaults:
   - default
@@ -437,10 +485,14 @@ def main() -> int:
             "Run with --inspect and correct `_FIELDS` in this script."
         )
 
-    leaked = [p["sku"] for p in products if _URL_RE.search(json.dumps(p))]
+    leaked = [(p["sku"], url_leaks(p)) for p in products if url_leaks(p)]
     if leaked:
-        raise SystemExit(f"URLs survived conversion in {len(leaked)} products "
-                         f"(e.g. {leaked[0]}); tests/test_no_egress.py would fail")
+        sku, fields = leaked[0]
+        raise SystemExit(
+            f"URLs survived conversion into text fields of {len(leaked)} "
+            f"products (e.g. {sku}: {', '.join(fields)}). Those render on the "
+            f"page under any image mode; only `images` may hold a URL."
+        )
 
     if not any(p["rating"] for p in products):
         print("    note: no ratings in this dataset; pass --synth-ratings to "

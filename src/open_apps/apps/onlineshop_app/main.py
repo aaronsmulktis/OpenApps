@@ -70,6 +70,10 @@ class Product:
     breadcrumb: str
     bullets: str
     options: str
+    # JSON list of image URLs from the source catalog. Only rendered when
+    # `apps.onlineshop.product_images=hotlink`; stored regardless so the mode
+    # can be flipped without re-importing.
+    images: str
 
 
 @dataclass
@@ -218,6 +222,61 @@ styles = Style("""
         font-size: 0.85rem;
         color: var(--color-fg);
     }
+    /* Hotlinked product imagery (apps.onlineshop.product_images=hotlink).
+       A CSS-only carousel: one radio per slide, one label per dot, so the
+       controls are real clickable elements without any JavaScript. The glyph
+       stays in the markup as the fallback and is revealed by `images-failed`,
+       which each <img>'s onerror sets when a fetch fails. */
+    .product-media {
+        position: relative;
+        width: var(--thumb-size, 120px);
+        height: var(--thumb-size, 120px);
+    }
+    .product-media .carousel-state { display: none; }
+    .product-media .carousel-slide {
+        display: none;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background-color: var(--color-surface);
+        border-radius: var(--radius);
+    }
+    /* Each radio reveals the image immediately following it. */
+    .product-media .carousel-state:checked + .carousel-slide { display: block; }
+    /* The glyph sits underneath and only shows if every image failed. */
+    .product-media > svg { display: none; }
+    .product-media.images-failed .carousel-slide { display: none !important; }
+    .product-media.images-failed > svg { display: block; }
+    .product-media.images-failed .carousel-dots { display: none; }
+    .carousel-dots {
+        position: absolute;
+        bottom: 4px;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        gap: 5px;
+    }
+    .carousel-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background-color: var(--color-border);
+        border: 1px solid var(--color-muted);
+        cursor: pointer;
+        margin: 0;
+    }
+    .carousel-dot:hover { background-color: var(--color-primary); }
+    /* Fill the dot matching the selected slide. One rule per position rather
+       than `:has()`, and capped at MAX_IMAGES in scripts/fetch_webshop.py. */
+    .carousel-state:nth-of-type(1):checked ~ .carousel-dots .carousel-dot:nth-child(1),
+    .carousel-state:nth-of-type(2):checked ~ .carousel-dots .carousel-dot:nth-child(2),
+    .carousel-state:nth-of-type(3):checked ~ .carousel-dots .carousel-dot:nth-child(3),
+    .carousel-state:nth-of-type(4):checked ~ .carousel-dots .carousel-dot:nth-child(4) {
+        background-color: var(--color-primary);
+        border-color: var(--color-primary);
+    }
+
     .cart-line { display: flex; gap: 0.8rem; align-items: center; }
     .cart-line .product-thumb { flex: 0 0 72px; }
     .cart-line-body { flex: 1 1 auto; }
@@ -267,6 +326,19 @@ def money(amount: float) -> str:
 
 def _per_page() -> int:
     return int(getattr(_cfg(), "products_per_page", 10))
+
+
+def image_mode() -> str:
+    """``glyphs`` (default) or ``hotlink``.
+
+    Read per-request rather than cached so a live ``reconfigure`` can flip it,
+    and tolerant of being called before ``set_environment`` has run.
+    """
+    config = getattr(app, "config", None)
+    if config is None:
+        return "glyphs"
+    mode = str(getattr(config.onlineshop, "product_images", "glyphs")).lower()
+    return mode if mode in ("glyphs", "hotlink") else "glyphs"
 
 
 def _categories() -> dict:
@@ -358,6 +430,7 @@ def _seed_products(config):
                         for name, values in (raw.get("options", {}) or {}).items()
                     }
                 ),
+                images=json.dumps([str(u) for u in (raw.get("images", []) or [])]),
             )
         )
 
@@ -683,16 +756,15 @@ def _glyph_for(product) -> list:
     return _GLYPHS[_CATEGORY_GLYPHS.get(product.category, "notebook")]
 
 
-def product_image(product, size: int = 120):
+def _glyph_svg(product, size: int = 120):
     """A deterministic line-art thumbnail for a product.
 
-    Generated rather than fetched: the WebShop records the catalog is built
-    from carry a `MainImage` Amazon CDN URL, which is outbound network the
-    eval nodes do not have (and which `tests/test_no_egress.py` exists to
-    prevent). `scripts/fetch_webshop.py` drops those URLs on import and this
-    draws the product category instead, which makes a listing scan like a shop
-    rather than a spreadsheet while staying deterministic, dependency-free and
-    about 2kB.
+    Generated rather than fetched, and the default for that reason: the eval
+    nodes have no outbound network, so a hotlinked image does not arrive there
+    while the page still returns 200 -- the failure `tests/test_no_egress.py`
+    exists to catch. Drawing the product category makes a listing scan like a
+    shop rather than a spreadsheet while staying deterministic,
+    dependency-free and about 2kB.
 
     Hue is keyed on the sku so a product's colour is stable across pages and
     two products in the same category still look distinct.
@@ -716,6 +788,96 @@ def product_image(product, size: int = 120):
         role="img",
         aria_label=product.title,
         cls="product-thumb",
+    )
+
+
+def _product_images(product) -> list[str]:
+    """The product's hotlinkable image URLs, empty unless the mode allows them.
+
+    Gated here rather than at each call site so that turning the mode off is
+    guaranteed to remove every `<img>` on every page, which is what the egress
+    tests assert.
+    """
+    if image_mode() != "hotlink":
+        return []
+    try:
+        return [u for u in json.loads(product.images or "[]") if u]
+    except (TypeError, ValueError, AttributeError):
+        return []
+
+
+def product_image(product, size: int = 120):
+    """A product thumbnail: hotlinked photos if configured, else line art.
+
+    `apps.onlineshop.product_images` picks between them and defaults to
+    `glyphs`. Under `hotlink` the catalog's own image URLs are rendered, as a
+    carousel when a product has more than one, with the glyph kept in the
+    markup underneath as a fallback -- see `_image_carousel`.
+    """
+    urls = _product_images(product)
+    if not urls:
+        return _glyph_svg(product, size)
+    return _image_carousel(product, urls, size)
+
+
+def _image_carousel(product, urls: list[str], size: int):
+    """Hotlinked product photos, with the generated glyph as the fallback.
+
+    Two failure modes have to degrade to the glyph rather than to a broken
+    image icon, because a screenshot-scored agent is graded on what the page
+    looks like:
+
+    * the host has no outbound network, or the CDN refuses the request. Each
+      `<img>` carries an `onerror` that marks the container, and the CSS then
+      hides the images and reveals the glyph. Inline rather than a script tag
+      so it survives the page being rendered in isolation. One failure takes
+      the whole carousel down to the glyph deliberately: the common case is
+      "no network", where all of them fail anyway, and a half-populated
+      carousel is a worse observation than a consistent one.
+    * the product has no usable URLs at all, which `product_image` handles
+      before getting here.
+
+    Multiple images become a CSS-only carousel: one radio per slide and a
+    label per dot, so the controls are real clickable elements for an agent
+    without a line of JavaScript. Single-image products skip the controls.
+    """
+    # A radio group per product, so two carousels on one listing page do not
+    # steer each other.
+    group = f"carousel-{product.sku}"
+    slides, dots = [], []
+    for index, url in enumerate(urls):
+        slide_id = f"{group}-{index}"
+        slides.append(
+            Input(type="radio", name=group, id=slide_id, cls="carousel-state",
+                  checked=(index == 0))
+        )
+        slides.append(
+            Img(
+                src=url,
+                alt=f"{product.title} (image {index + 1} of {len(urls)})",
+                width=size, height=size,
+                loading="lazy",
+                cls="carousel-slide",
+                onerror="this.closest('.product-media').classList.add('images-failed')",
+            )
+        )
+        dots.append(
+            Label(
+                "",
+                _for=slide_id,
+                cls="carousel-dot",
+                title=f"Image {index + 1}",
+                aria_label=f"Show image {index + 1} of {len(urls)}",
+            )
+        )
+
+    children = [*slides, _glyph_svg(product, size)]
+    if len(urls) > 1:
+        children.append(Div(*dots, cls="carousel-dots"))
+    return Div(
+        *children,
+        cls="product-media product-thumb",
+        style=f"--thumb-size:{size}px",
     )
 
 
