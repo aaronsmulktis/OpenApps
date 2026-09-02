@@ -3,9 +3,11 @@
 # Optional setup: installs OpenJDK 21 for the map app's route planning.
 #
 # This used to also download the online shop's product dataset from Google
-# Drive and a spaCy model for its reward function. The shop now seeds its
-# catalog from `config/apps/onlineshop/content/` and searches with SQLite
-# FTS5, so it needs no setup at all -- it works straight after `uv sync`.
+# Drive and a spaCy model for its reward function. The shop now searches with
+# SQLite FTS5, so it needs no JDK -- but it still needs a catalog, which is a
+# separate optional step and a Python script rather than part of this one:
+#
+#     uv run scripts/fetch_webshop.py
 #
 # The map app still shells out to OpenTripPlanner (`otp-2.6.0-shaded.jar`),
 # which is Java, so the JDK install moved here from the shop's directory.

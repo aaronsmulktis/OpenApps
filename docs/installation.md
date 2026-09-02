@@ -9,9 +9,10 @@
 
 3) Install `playwright install chromium`
 
-That is the whole installation. **Every app, the online shop included, runs
-from `uv sync` with no further setup** — no JDK, no dataset download, no
-model weights. Launch with:
+That is the whole installation. **Every app runs from `uv sync` with no
+further setup** — no JDK and no model weights. The one exception is the online
+shop, which needs a catalog before it appears; see
+[The online shop](#the-online-shop) below. Launch with:
 
 ```
 uv run launch.py
@@ -34,25 +35,89 @@ app, and the map app's browsing and saved places, work without it.
 
 ## The online shop
 
-The shop is enabled by default and needs no setup step:
+**The shop ships with no catalog, so it does not appear until you build one.**
+Until then there is no `/onlineshop` route and no tile on the start page — the
+app is absent rather than empty. One optional script fixes that:
 
 ```bash
-uv run launch.py                                # shop included, at /onlineshop
-uv run launch.py apps.onlineshop.enable=False   # turn it off
+uv run scripts/fetch_webshop.py                          # build the catalog
+uv run launch.py apps/onlineshop/content=webshop         # shop at /onlineshop
 ```
 
-/// details | It used to need OpenJDK 21 and a dataset download
+The script downloads the [WebShop](https://github.com/princeton-nlp/WebShop)
+item dump from
+[a HuggingFace mirror](https://huggingface.co/datasets/YWZBrandon/webshop-data)
+and converts it into a `webshop` content pack.
 
-Earlier versions were a port of Princeton's
-[WebShop](https://github.com/princeton-nlp/WebShop): ~1000 scraped Amazon
-products fetched from Google Drive by `gdown`, searched through a Lucene index
+```bash
+# Look before you write: prints the dataset's file list, the keys actually
+# present in the records, how they map onto the shop's fields, and the
+# category distribution. Writes nothing.
+uv run scripts/fetch_webshop.py --inspect
+
+# Default run: 200 products from items_shuffle_1000.json.
+uv run scripts/fetch_webshop.py
+
+# A bigger catalog, from the full 1.18M-product dump (~1.5 GB download).
+uv run scripts/fetch_webshop.py --file items_shuffle.json --limit 2000
+
+# Populate star ratings when the chosen dump has none. Off by default: the
+# values are derived from the sku, so they are stable but invented.
+uv run scripts/fetch_webshop.py --synth-ratings
+
+# Write somewhere else, e.g. to diff two conversions.
+uv run scripts/fetch_webshop.py --out /tmp/webshop.yaml
+```
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `--inspect` | off | Print the real schema and exit without writing |
+| `--file` | first of `items_shuffle_1000.json`, `items_human_ins.json`, `items_shuffle.json` | Which dump in the HF repo to convert |
+| `--limit` | `200` | Products to keep |
+| `--synth-ratings` | off | Derive stable ratings from the sku when the data has none |
+| `--out` | `config/apps/onlineshop/content/webshop.yaml` | Destination |
+
+It downloads through `huggingface_hub` when that is importable, so re-runs hit
+the shared HF cache and cost nothing; otherwise it falls back to a plain HTTPS
+GET and needs no extra dependency.
+
+**On field names.** The dump has been re-exported several times and the casing
+is not stable — the current one uses `name`, `full_description`,
+`small_description` and `pricing` rather than the `Title`/`Description`/
+`BulletPoints`/`Price` an older guide might suggest. Each output field is read
+from a list of candidate keys (`_FIELDS` in the script), so if a conversion
+comes out empty, run `--inspect` and add the real key to that list. That is a
+one-line fix rather than a rewrite.
+
+**On options.** WebShop's `customization_options` is
+`{"Color": [{"value": "Bath Ball", "url": ..., "image": ..., "price": ...}]}`
+— the sibling keys hold `amazon.com` and `media-amazon.com` links. Only
+`value` is carried across, and the script aborts if any URL survives into the
+output, because `tests/test_no_egress.py` would fail the rendered page.
+
+**Why it is a download and not a checked-in file.** Those records are scraped
+Amazon listings — real brand names and real marketing copy. Redistributing
+them from this repository is a licensing question we do not need to answer, so
+the generated pack is gitignored and stays on the machine that built it.
+Product images are dropped on import for the same reason the shop draws its
+own line art: the eval nodes have no outbound network, and
+`tests/test_no_egress.py` fails any page that references a CDN.
+
+`config/apps/onlineshop/content/fixture.yaml` is a small mechanical catalog
+(18 generic products, no prose) that exists only so the test suite has
+something fixed to run against. It is not meant as a storefront, but
+`apps/onlineshop/content=fixture` will give you a working shop offline.
+
+/// details | It used to need OpenJDK 21 too
+
+Earlier versions were a port of Princeton's WebShop that fetched the same
+dataset from Google Drive with `gdown` and searched it through a Lucene index
 built by `pyserini` — a JNI binding, hence the JDK — plus a spaCy model for a
-reward function. That is why it shipped disabled.
+reward function.
 
-If you are following an older guide: `setup_pyserini.sh` no longer exists,
-`setup.sh` no longer downloads a dataset, and `apps.onlineshop.enable=True` is
-no longer needed. The Google Drive links the old `setup.sh` used are also dead,
-so that path cannot be followed even on an older checkout.
+Search is now SQLite FTS5, so the JDK and `setup_pyserini.sh` are gone, and
+the Google Drive links the old `setup.sh` used are dead. `scripts/fetch_webshop.py`
+replaces that download with the HuggingFace mirror.
 ///
 
 ### Varying the shop
@@ -66,10 +131,106 @@ uv run launch.py apps.onlineshop.theme=solarized        # or apps/theme=solarize
 uv run launch.py apps.onlineshop.products_per_page=5
 ```
 
-The catalog itself lives in `config/apps/onlineshop/content/default.yaml` — 40
-products across 8 categories. Add or edit products there, or override
-`apps.onlineshop.products` from another content file to swap the catalog
+One caveat on `content`: it is a single Hydra group, so the pack that supplies
+the catalog is the same pack that supplies the chrome. `content=german`
+inherits from `default` and therefore has no products. To vary the chrome on
+top of a real catalog, add `defaults: - webshop` to a copy of the pack you
+want rather than selecting two.
+
+The catalog lives in whichever content pack is selected —
+`webshop.yaml` after running the setup script, or `fixture.yaml` for the
+mechanical test catalog. `default.yaml` is chrome only (title, promo text,
+category labels, currency) and deliberately carries `products: []`. Override
+`apps.onlineshop.products` from your own content file to swap the catalog
 wholesale.
+
+### The product seed
+
+A content pack is plain Hydra YAML. `set_environment` clears and re-seeds all
+four tables from it on every launch and every reset, so the catalog is a
+variation axis like any other text in OpenApps — not a fixture you migrate.
+
+```yaml
+# @package apps.onlineshop
+defaults:
+  - default          # inherit title, promo text, category labels, currency
+
+products:
+  - sku: 'furn-desk-205'          # stable id; used in URLs and in cart/order state
+    title: 'Standing Desk'        # display name, and the top-weighted search field
+    price: 649.00                 # float, in `currency_symbol` units
+    category: furniture           # must be a key of `categories` in the pack
+    breadcrumb: ['Furniture', 'Desks']   # crumbs on the item page
+    rating: 4.2                   # 0-5, rendered as stars
+    options:                      # option name -> selectable values; may be {}
+      finish: ['walnut', 'natural']
+      width: ['120 cm', '140 cm']
+    bullets:                      # short feature list; may be []
+      - 'Electric height adjustment'
+    description: 'Sit-stand desk with a programmable controller.'
+
+# Optional starting state. Both are seeded after `products`, and a line
+# referencing an unknown sku is dropped with a warning rather than crashing
+# the launch.
+cart:
+  - sku: 'furn-desk-205'
+    options: {finish: 'walnut'}   # values not offered by the product are dropped
+    quantity: 1
+
+orders:
+  - order_id: '0efcf51f'          # omit to get a random one
+    name: 'Alex Morgan'
+    address: '14 Bridge Street'
+    date: '2026-08-24 19:54:34'
+    status: 'Delivered'
+    items:
+      - sku: 'furn-desk-205'
+        options: {finish: 'walnut'}
+        quantity: 1
+    # total: 649.00               # omit to compute from current prices
+```
+
+Option values are indexed for search alongside the title, bullets and
+description, so a query for `walnut` finds the desk above even though the word
+appears nowhere in its text. Cart lines are keyed on sku *plus* a canonical
+form of the chosen options, so the same product in two finishes is two lines,
+and the same options in a different order is one.
+
+### Product glyphs
+
+Thumbnails are generated inline SVG, never fetched. `_GLYPHS` in
+`src/open_apps/apps/onlineshop_app/main.py` holds ~35 hand-written line-art
+shapes as SVG path data on a 100×100 box; `_GLYPH_KEYWORDS` maps title
+keywords onto them, first match wins; `_CATEGORY_GLYPHS` catches anything that
+matches nothing. Stroke and fill come from a hue derived from the sku, so a
+product looks identical on every page it appears on.
+
+To review the whole catalog's art at once, rather than paging through the app:
+
+```bash
+uv run scripts/render_glyph_sheet.py                        # the webshop pack
+uv run scripts/render_glyph_sheet.py fixture                # the test catalog
+uv run scripts/render_glyph_sheet.py --out ~/glyphs.html    # somewhere durable
+uv run scripts/render_glyph_sheet.py --size 140             # bigger glyphs
+open /tmp/glyphs.html
+```
+
+It prints how many titles matched a keyword versus fell back to their
+category, and tints the fallbacks on the page so they are easy to pick out:
+
+```
+--> Wrote /tmp/glyphs.html (177 kB, 200 products)
+    113 matched a glyph keyword, 87 fell back to their category default (tinted)
+```
+
+Keywords match on **word boundaries with an optional plural**, so `pen` hits
+"Fountain Pen" and "Pens" but not "Open" or "Pendant" — worth knowing before
+you add a short keyword, because real retailer titles are long and a bare
+substring match produces confidently wrong art. To raise coverage on a
+catalog of your own, add entries to `_GLYPH_KEYWORDS` pointing at existing
+glyph names, then re-run the sheet to check the delta. Order matters: put the
+specific ahead of the general, which is why `desk organizer` and `lamp` both
+sit above `desk`.
 
 ### Inspecting the shop's data
 
@@ -98,11 +259,11 @@ are computed from.
 
 | Concern | Implementation |
 | --- | --- |
-| Catalog | Seeded from Hydra `content` config into the `products` table on launch |
+| Catalog | Seeded from the Hydra `content` pack into the `products` table on launch; built by `scripts/fetch_webshop.py` |
 | Search | SQLite **FTS5** with its built-in `bm25()`, weighted title > options > bullets > description |
 | Persistence | One SQLite file, four relational tables, via `fastlite` |
 | Rendering | FastHTML against the shared design tokens (`apps/theme=`) with a `layout` group |
-| Imagery | A deterministic inline SVG swatch per sku — no files, no outbound requests |
+| Imagery | Inline SVG line art chosen by title keyword, hue keyed on the sku — no files, no outbound requests |
 | Reward surface | `GET /onlineshop_all` → `{"cart": [...], "orders": [...]}` |
 
 Search is the part worth knowing about. FTS5 is compiled into Python's

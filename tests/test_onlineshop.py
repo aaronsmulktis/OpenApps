@@ -20,14 +20,25 @@ from hydra import compose, initialize
 from starlette.testclient import TestClient
 
 from open_apps.apps.onlineshop_app import main as shop
+from open_apps.apps.start_page.main import onlineshop_has_catalog
 
 
 def build_client(tmp_path, overrides=None):
-    """Compose a config, seed the shop from it, and return a client."""
+    """Compose a config, seed the shop from it, and return a client.
+
+    The shipped `default` content pack has an empty catalog on purpose -- the
+    real one is the WebShop dump, downloaded per-machine by
+    `scripts/fetch_webshop.py` and never committed. So every test runs against
+    `content=fixture`, the small mechanical catalog, unless it is deliberately
+    exercising a different pack.
+    """
+    overrides = list(overrides or [])
+    if not any(o.startswith("apps/onlineshop/content=") for o in overrides):
+        overrides.insert(0, "apps/onlineshop/content=fixture")
     with initialize(version_base=None, config_path="../config/"):
         config = compose(
             config_name="config",
-            overrides=[f"logs_dir={tmp_path}"] + list(overrides or []),
+            overrides=[f"logs_dir={tmp_path}"] + overrides,
         )
     Path(config.logs_dir).mkdir(parents=True, exist_ok=True)
     Path(config.databases_dir).mkdir(parents=True, exist_ok=True)
@@ -278,7 +289,7 @@ class TestRewardState:
     def test_catalog_is_opt_in(self, client):
         assert "catalog" not in state(client)
         payload = client.get("/onlineshop_all?include_catalog=true").json()
-        assert len(payload["catalog"]) == 40
+        assert len(payload["catalog"]) == 18  # the fixture pack
 
     def test_reseeding_is_idempotent(self, tmp_path):
         """set_environment runs again on reset; it must not double-insert."""
@@ -339,6 +350,55 @@ class TestVariations:
         assert client.get("/onlineshop").status_code == 200
 
 
+class TestCatalogGate:
+    """The shop is registered only when it has something to sell.
+
+    Asserted against the config rather than by re-registering routes, because
+    `initialize_routes_and_configure_task` mutates the shared start-page app
+    and would leak the shop's routes into every test that runs after it.
+    """
+
+    def _apps_config(self, tmp_path, overrides=None):
+        with initialize(version_base=None, config_path="../config/"):
+            return compose(
+                config_name="config",
+                overrides=[f"logs_dir={tmp_path}"] + list(overrides or []),
+            ).apps
+
+    def test_shipped_config_has_no_catalog(self, tmp_path):
+        """`content=default` is chrome only -- see config/.../content/default.yaml."""
+        assert not onlineshop_has_catalog(self._apps_config(tmp_path))
+
+    def test_a_content_pack_with_products_opens_the_shop(self, tmp_path):
+        config = self._apps_config(tmp_path, ["apps/onlineshop/content=fixture"])
+        assert onlineshop_has_catalog(config)
+
+    def test_gate_is_independent_of_the_enable_flag(self, tmp_path):
+        """Two separate reasons to hide the shop; neither implies the other."""
+        config = self._apps_config(
+            tmp_path,
+            ["apps/onlineshop/content=fixture", "apps.onlineshop.enable=False"],
+        )
+        assert onlineshop_has_catalog(config)
+        assert not config.onlineshop.enable
+
+    def test_missing_shop_config_does_not_raise(self, tmp_path):
+        """A config with the shop stripped out entirely still answers False."""
+        config = self._apps_config(tmp_path)
+        del config.onlineshop
+        assert not onlineshop_has_catalog(config)
+
+    def test_empty_catalog_still_renders_the_shop_app_directly(self, tmp_path):
+        """Gating lives in the start page, not the shop.
+
+        The app itself has to survive an empty catalog: tests, resets and
+        `content` sweeps all seed it with zero products at some point.
+        """
+        client = build_client(tmp_path, ["apps/onlineshop/content=default"])
+        assert client.get("/onlineshop").status_code == 200
+        assert state(client)["cart"] == []
+
+
 class TestProductImagery:
     """Thumbnails are generated line art, not fetched images."""
 
@@ -360,6 +420,36 @@ class TestProductImagery:
     def test_products_get_the_right_glyph(self, client, sku, glyph):
         product = shop._row(shop.products, sku)
         assert shop._glyph_for(product) is shop._GLYPHS[glyph]
+
+    @pytest.mark.parametrize(
+        "title,not_glyph",
+        [
+            # Each of these matched the wrong keyword as a bare substring
+            # before `_GLYPH_PATTERNS` added word boundaries. Real catalog
+            # titles are long retailer strings, so all of them occur.
+            ("Open Toe Sandal for Women", "pen"),
+            ("Content Creator Ring Light", "tent"),
+            ("Pendant Necklace, Silver", "pen"),
+            ("Heavy Duty Clamp Set", "lamp"),
+            ("Satin Curtain Panel", "tin"),
+        ],
+    )
+    def test_keywords_match_whole_words_only(self, client, title, not_glyph):
+        product = shop._row(shop.products, "elec-hdph-001")
+        product.title, product.category = title, "office"
+        assert shop._glyph_for(product) is not shop._GLYPHS[not_glyph]
+
+    def test_word_boundaries_do_not_break_real_matches(self, client):
+        """The boundaries must not cost the matches they were protecting."""
+        product = shop._row(shop.products, "elec-hdph-001")
+        for title, glyph in [
+            ("Fountain Pen, Fine Nib", "pen"),
+            ("Backpacking Tent, 2-Person", "tent"),
+            ("LED Desk Lamp", "lamp"),
+            ("Open Toe Sandal for Women", "shoe"),
+        ]:
+            product.title = title
+            assert shop._glyph_for(product) is shop._GLYPHS[glyph], title
 
     def test_every_product_resolves_to_a_glyph(self, client):
         for product in shop.products():

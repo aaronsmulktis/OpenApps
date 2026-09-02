@@ -57,15 +57,23 @@ Learn more about to customize the content and appearance of apps in the [docs](h
 
 ## The online shop
 
-The shop is on by default at `/onlineshop`, with no setup step — no JDK, no
-dataset download. (It previously required OpenJDK 21 and a Google Drive
-download; see [Installation](docs/installation.md) if you are following an
-older guide.)
+The shop ships with **no catalog**, so it does not appear until you build one
+— no route, no tile. One optional script downloads the
+[WebShop](https://github.com/princeton-nlp/WebShop) item dump and converts it
+into a content pack:
 
 ```bash
-uv run launch.py                                # shop included
-uv run launch.py apps.onlineshop.enable=False   # turn it off
+uv run scripts/fetch_webshop.py                   # build the catalog
+uv run launch.py apps/onlineshop/content=webshop  # shop at /onlineshop
+uv run launch.py apps.onlineshop.enable=False     # turn it off entirely
 ```
+
+The generated pack is gitignored on purpose: those records are scraped Amazon
+listings, so they stay on the machine that downloaded them rather than being
+redistributed from here. Product images are dropped on import — the shop draws
+its own line art, and no page reaches the network. See
+[Installation](docs/installation.md) for the flags, and for the small
+mechanical `fixture` catalog the tests use.
 
 It varies like every other app, with a `layout` axis of its own:
 
@@ -75,16 +83,36 @@ uv run launch.py apps/onlineshop/content=german
 uv run launch.py apps/theme=solarized             # or apps.onlineshop.theme=...
 ```
 
-**Architecture.** The catalog is seeded from
-`config/apps/onlineshop/content/default.yaml` (40 products, 8 categories) into
-a SQLite database on launch, so the catalog is a content variation axis like
-any other text in OpenApps. Search is SQLite **FTS5** using its built-in
+**Architecture.** The catalog is seeded from the selected
+`config/apps/onlineshop/content/` pack into a SQLite database on launch, so it
+is a content variation axis like any other text in OpenApps. Search is SQLite
+**FTS5** using its built-in
 `bm25()` ranking — FTS5 ships inside Python's `sqlite3`, so relevance ranking
 costs no dependency. State lives in four plain tables (`products`,
 `cart_items`, `orders`, `order_items`) and is served as JSON at
 `/onlineshop_all`, which is what rewards are computed from. Pages are FastHTML
 rendered against the shared design tokens, and product images are generated
 inline SVG, so the app makes no outbound requests.
+
+**The product seed.** A content pack lists `products`, plus an optional `cart`
+and `orders` to give a run some starting state. Each product is nine fields —
+`sku`, `title`, `price`, `category`, `breadcrumb`, `rating`, `options`,
+`bullets`, `description` — and `set_environment` re-seeds all four tables from
+them on every launch and every reset. Write your own pack to swap the catalog
+wholesale; `scripts/fetch_webshop.py` is just a generator for one.
+
+**The glyphs.** Thumbnails are drawn, not fetched: a keyword table maps the
+product title to one of ~35 hand-written SVG line-art shapes, tinted by a hue
+derived from the sku so a product looks the same on every page. Titles that
+match nothing fall back to a per-category glyph. To see the whole catalog's
+art on one page:
+
+```bash
+uv run scripts/render_glyph_sheet.py && open /tmp/glyphs.html
+```
+
+See [Installation](docs/installation.md#the-online-shop) for both scripts'
+flags, the seed schema in full, and how to extend the keyword table.
 
 **Inspecting its data.** Every launch writes a fresh database under that run's
 `log_outputs`, so the newest one is the run you were just clicking through:
@@ -165,7 +193,7 @@ Our apps are built on top of several excellent frameworks:
 - FastHTML [framework](https://github.com/AnswerDotAI/fasthtml) and [examples](https://github.com/AnswerDotAI/fasthtml-example) which allowed us to build fully functional apps in Python, the language most familiar to AI researchers.
 - [Browser Gym](https://github.com/ServiceNow/BrowserGym/blob/main/LICENSE) and [AgentLab](https://github.com/ServiceNow/AgentLab/blob/main/LICENSE):
 - Open Street Maps: https://www.openstreetmap.org/copyright for our Maps apps.
-- our online shop's design descends from [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md), developed by Princeton University. It has since been rewritten and no longer uses WebShop's code or dataset.
+- our online shop descends from [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md), developed by Princeton University. The application has been rewritten and shares none of WebShop's code. Its catalog is still WebShop's item dump, which `scripts/fetch_webshop.py` downloads on request; that data is not redistributed as part of this repository.
 
 Some icons are have been designed using resources from Flaticon.com
 
