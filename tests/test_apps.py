@@ -83,12 +83,21 @@ class TestApps:
         response = client.get("/maps")
         assert response.status_code == 200
 
-    def test_onlineshop(self, client):
-        # No longer gated on OpenJDK 21: the shop's search is SQLite FTS5 and
-        # its catalog is seeded from Hydra, so it runs anywhere the other apps
-        # do. See tests/test_onlineshop.py for its behaviour.
-        response = client.get("/onlineshop")
-        assert response.status_code == 200
+    def test_onlineshop_is_absent_without_a_catalog(self, client):
+        """The shop ships with no products, so by default it does not exist.
+
+        Its catalog is the WebShop item dump, which is scraped Amazon data and
+        is therefore downloaded by `scripts/fetch_webshop.py` instead of being
+        committed. Until that has run there is nothing to sell, and the start
+        page leaves the routes unregistered rather than serving an empty
+        storefront. See `tests/test_onlineshop.py` for the shop's behaviour
+        once a catalog is present.
+        """
+        assert client.get("/onlineshop").status_code == 404
+
+    def test_homepage_hides_the_shop_tile_without_a_catalog(self, client):
+        """A tile for unregistered routes would just 404 the user."""
+        assert 'href="/onlineshop"' not in client.get("/").text
 
 
 class TestTasks:

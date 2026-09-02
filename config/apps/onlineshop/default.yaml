@@ -13,9 +13,13 @@ database_path: ${databases_dir}/onlineshop.db
 theme: null
 
 # The shop used to be gated behind an OpenJDK 21 install (Lucene, via
-# pyserini) and a dataset downloaded from Google Drive, so it defaulted off.
-# Search is now SQLite FTS5 and the catalog ships in `content`, so it has no
-# setup step and is on by default. Turn it off with `apps.onlineshop.enable=False`.
+# pyserini) as well as its dataset. Search is now SQLite FTS5, so the native
+# dependency is gone and this flag is on -- but the catalog still has to be
+# built by `scripts/fetch_webshop.py` before the shop appears, because the
+# `default` content pack ships empty. See `content/default.yaml`.
+#
+# So: `enable=False` hides the shop outright; leaving it True and skipping the
+# setup script also hides it, until a catalog exists.
 enable: True
 
 allowed_credit_cards:

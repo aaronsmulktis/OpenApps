@@ -200,3 +200,9 @@ internal-*
 # full checkout inside the repo, which otherwise shows up as untracked and a
 # stray `git add -A` would commit the entire tree.
 .claude/worktrees/
+
+# The online shop's catalog, built from the WebShop item dump by
+# `scripts/fetch_webshop.py`. Those records are scraped Amazon listings --
+# real brand names and real marketing copy -- so they are downloaded onto the
+# machine that runs the shop and are never committed here.
+config/apps/onlineshop/content/webshop.yaml

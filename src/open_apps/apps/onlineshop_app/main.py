@@ -601,26 +601,64 @@ _GLYPHS: dict[str, list] = {
 # Title keyword -> glyph. First match wins, so order matters where a title
 # could hit two entries ("standing desk" must beat nothing, "dining table"
 # must not be caught by a later, broader word).
+#
+# Keywords match on word boundaries, not as bare substrings -- see
+# `_GLYPH_PATTERNS`. Real catalog titles are long retailer strings, and
+# "pen" inside "Open Toe Sandal" or "tent" inside "content" put obviously
+# wrong line art on the listing before the boundaries went in.
 _GLYPH_KEYWORDS: tuple[tuple[str, str], ...] = (
-    ("headphone", "headphones"), ("monitor", "monitor"), ("keyboard", "keyboard"),
-    ("speaker", "speaker"), ("hub", "hub"),
-    ("cookware", "pan"), ("skillet", "pan"), ("pour-over", "mug"), ("coffee set", "mug"),
-    ("kettle", "kettle"), ("cutting board", "board"),
-    ("dining table", "table"), ("office chair", "chair"), ("armchair", "chair"),
+    ("headphone", "headphones"), ("earbud", "headphones"), ("headset", "headphones"),
+    ("monitor", "monitor"), ("keyboard", "keyboard"), ("speaker", "speaker"),
+    # The hub glyph is a box with leads coming out of it, which reads well for
+    # anything that plugs into something else.
+    ("hub", "hub"), ("cable", "hub"), ("cord", "hub"), ("charger", "hub"),
+    ("adapter", "hub"), ("usb", "hub"), ("hard drive", "hub"),
+    ("cookware", "pan"), ("skillet", "pan"), ("frying pan", "pan"),
+    ("pour-over", "mug"), ("coffee set", "mug"), ("mug", "mug"),
+    ("kettle", "kettle"), ("cutting board", "board"), ("mirror", "board"),
+    # Furniture. "table" is broad but unambiguous within a product title.
+    ("dining table", "table"), ("console table", "table"), ("coffee table", "table"),
+    ("sofa table", "table"), ("vanity", "table"), ("table", "table"),
+    ("office chair", "chair"), ("armchair", "chair"), ("chair", "chair"),
+    ("stool", "chair"), ("sofa", "chair"), ("couch", "chair"),
     # "desk" is deliberately late: "Desk Organizer" and "LED Desk Lamp" both
     # contain it and must not be caught by the standing-desk entry.
-    ("bookcase", "shelf"), ("desk organizer", "organizer"), ("lamp", "lamp"),
-    ("desk", "desk"),
-    ("sweater", "shirt"), ("shirt", "shirt"), ("jacket", "jacket"),
-    ("shoes", "shoe"), ("scarf", "scarf"),
+    ("bookcase", "shelf"), ("shelf", "shelf"), ("shelving", "shelf"),
+    ("desk organizer", "organizer"), ("lamp", "lamp"), ("desk", "desk"),
+    ("sweater", "shirt"), ("shirt", "shirt"), ("blouse", "shirt"),
+    ("dress", "shirt"), ("lingerie", "shirt"), ("sleepwear", "shirt"),
+    ("pajama", "shirt"), ("bra", "shirt"), ("shorts", "shirt"),
+    ("jacket", "jacket"), ("coat", "jacket"), ("hoodie", "jacket"),
+    ("shoes", "shoe"), ("sandal", "shoe"), ("sneaker", "shoe"), ("boot", "shoe"),
+    ("scarf", "scarf"),
     ("tent", "tent"), ("sleeping bag", "sleepingbag"), ("poles", "poles"),
-    ("water bottle", "bottle"), ("daypack", "backpack"), ("backpack", "backpack"),
-    ("serum", "dropper"), ("cleanser", "tube"), ("sunscreen", "tube"),
-    ("hair treatment", "dropper"), ("mask", "jar"),
-    ("coffee beans", "beans"), ("matcha", "tin"), ("olive oil", "oil"),
-    ("honey", "honey"), ("chocolate", "chocolate"),
-    ("notebook", "notebook"), ("pen", "pen"), ("lamp", "lamp"),
+    ("water bottle", "bottle"), ("tumbler", "bottle"),
+    ("daypack", "backpack"), ("backpack", "backpack"),
+    # Beauty. dropper = serum bottle, tube = squeezable, jar = potted.
+    ("serum", "dropper"), ("hair treatment", "dropper"), ("essence", "dropper"),
+    ("cleanser", "tube"), ("sunscreen", "tube"), ("shampoo", "tube"),
+    ("conditioner", "tube"), ("lotion", "tube"), ("lipstick", "tube"),
+    ("mascara", "tube"), ("toothpaste", "tube"), ("trimmer", "tube"),
+    ("razor", "tube"), ("hair", "tube"),
+    ("mask", "jar"), ("makeup", "jar"), ("blush", "jar"), ("cream", "jar"),
+    ("balm", "jar"), ("powder", "jar"),
+    ("mouthwash", "bottle"), ("perfume", "bottle"), ("fragrance", "bottle"),
+    ("coffee beans", "beans"), ("coffee", "beans"), ("matcha", "tin"),
+    ("tea", "tin"), ("olive oil", "oil"), ("oil", "oil"),
+    ("honey", "honey"), ("chocolate", "chocolate"), ("candy", "chocolate"),
+    ("notebook", "notebook"), ("journal", "notebook"), ("planner", "notebook"),
+    ("pen", "pen"), ("pencil", "pen"), ("marker", "pen"),
     ("shredder", "shredder"),
+)
+
+# Keywords compiled with word boundaries, in table order. `\b` on both ends
+# means "pen" matches "Fountain Pen" and "Pen, Black" but not "Open" or
+# "Pendant"; multi-word keywords are unaffected. The optional `(?:e?s)?`
+# keeps plurals working, which the bare substring match used to get for free
+# -- without it "headphone" stops matching "Headphones". Built once at import.
+_GLYPH_PATTERNS: tuple[tuple[re.Pattern, str], ...] = tuple(
+    (re.compile(rf"\b{re.escape(keyword)}(?:e?s)?\b"), glyph)
+    for keyword, glyph in _GLYPH_KEYWORDS
 )
 
 # Fallback when no keyword matches, so a product added to the config without a
@@ -639,8 +677,8 @@ _CATEGORY_GLYPHS: dict[str, str] = {
 
 def _glyph_for(product) -> list:
     title = product.title.lower()
-    for keyword, glyph in _GLYPH_KEYWORDS:
-        if keyword in title:
+    for pattern, glyph in _GLYPH_PATTERNS:
+        if pattern.search(title):
             return _GLYPHS[glyph]
     return _GLYPHS[_CATEGORY_GLYPHS.get(product.category, "notebook")]
 
@@ -648,12 +686,13 @@ def _glyph_for(product) -> list:
 def product_image(product, size: int = 120):
     """A deterministic line-art thumbnail for a product.
 
-    Generated rather than fetched: the original pointed every thumbnail at an
-    Amazon CDN URL, which is outbound network the eval nodes do not have (and
-    which `tests/test_no_egress.py` exists to prevent). Drawing the product
-    category instead of the old initials makes a listing scan like a shop
-    rather than a spreadsheet, while staying deterministic, dependency-free
-    and about 2kB.
+    Generated rather than fetched: the WebShop records the catalog is built
+    from carry a `MainImage` Amazon CDN URL, which is outbound network the
+    eval nodes do not have (and which `tests/test_no_egress.py` exists to
+    prevent). `scripts/fetch_webshop.py` drops those URLs on import and this
+    draws the product category instead, which makes a listing scan like a shop
+    rather than a spreadsheet while staying deterministic, dependency-free and
+    about 2kB.
 
     Hue is keyed on the sku so a product's colour is stable across pages and
     two products in the same category still look distinct.
