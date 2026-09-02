@@ -111,6 +111,14 @@ art on one page:
 uv run scripts/render_glyph_sheet.py && open /tmp/glyphs.html
 ```
 
+**Real photos, optionally.** The catalog keeps each product's image URLs, and
+`apps.onlineshop.product_images=hotlink` renders them — as a CSS-only carousel
+when a product has several, falling back to the glyph when an image fails to
+load. It is **off by default**: the eval nodes have no outbound network, so
+hotlinked images silently do not arrive while the page still returns 200, and
+a screenshot-scored agent ends up graded on an observation that lost its
+imagery. Turn it on for local browsing.
+
 See [Installation](docs/installation.md#the-online-shop) for both scripts'
 flags, the seed schema in full, and how to extend the keyword table.
 

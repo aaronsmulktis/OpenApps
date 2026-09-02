@@ -13,6 +13,7 @@ start page, so a test can re-seed it with a different `content`, `layout` or
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -470,6 +471,101 @@ class TestProductImagery:
     def test_hue_is_stable_for_a_sku(self, client):
         product = shop._row(shop.products, "elec-hdph-001")
         assert str(shop.product_image(product)) == str(shop.product_image(product))
+
+
+def markup(client, path="/onlineshop") -> str:
+    """Page markup with the stylesheet stripped.
+
+    The shop inlines its CSS, and that CSS mentions every carousel class name,
+    so counting class names in the whole document would find matches on a page
+    that renders none of them.
+    """
+    return client.get(path).text.split("</style>")[-1]
+
+
+class TestHotlinkedImages:
+    """`apps.onlineshop.product_images=hotlink` renders the catalog's photos.
+
+    Off by default: the eval nodes have no outbound network, so hotlinked
+    images do not arrive there while the page still returns 200, and a
+    screenshot-scored agent would be graded on an observation that quietly
+    lost its imagery.
+    """
+
+    def hotlink(self, tmp_path, extra=None):
+        return build_client(
+            tmp_path,
+            ["apps.onlineshop.product_images=hotlink"] + list(extra or []),
+        )
+
+    def test_default_mode_emits_no_product_images(self, client):
+        # The page header carries a local logo <img>, so this checks for
+        # product imagery specifically rather than for any <img> at all.
+        page = markup(client)
+        assert "carousel-slide" not in page
+        assert "product-media" not in page
+        assert "example.invalid" not in page
+
+    def test_hotlink_renders_the_catalog_urls(self, tmp_path):
+        page = markup(self.hotlink(tmp_path))
+        assert "https://images.example.invalid/hdph-front.jpg" in page
+        assert page.count("carousel-slide") >= 3
+
+    def test_multiple_images_get_carousel_controls(self, tmp_path):
+        page = markup(self.hotlink(tmp_path), "/onlineshop/item/elec-hdph-001")
+        assert page.count('class="carousel-slide"') == 3
+        assert page.count('class="carousel-dot"') == 3
+        # One radio per slide, exactly one of them checked.
+        assert page.count('class="carousel-state"') == 3
+        assert page.count("checked") == 1
+
+    def test_a_single_image_gets_no_controls(self, tmp_path):
+        page = markup(self.hotlink(tmp_path), "/onlineshop/item/elec-mntr-002")
+        assert page.count('class="carousel-slide"') == 1
+        assert "carousel-dot" not in page
+
+    def test_products_without_images_still_get_a_glyph(self, tmp_path):
+        """Most of the fixture has no `images`; those must not go blank."""
+        page = markup(self.hotlink(tmp_path), "/onlineshop/item/furn-table-201")
+        assert "carousel-slide" not in page
+        assert "<svg" in page
+
+    def test_the_glyph_is_kept_as_a_fallback_behind_the_photos(self, tmp_path):
+        """An image that fails to load must degrade to line art, not to a
+        broken-image icon: the glyph ships in the markup and `onerror` flips
+        the container class that reveals it."""
+        page = markup(self.hotlink(tmp_path), "/onlineshop/item/elec-hdph-001")
+        assert "<svg" in page
+        assert "images-failed" in page
+
+    def test_each_product_gets_its_own_radio_group(self, tmp_path):
+        """Two carousels on one listing must not steer each other."""
+        page = markup(self.hotlink(tmp_path))
+        groups = re.findall(r'name="(carousel-[^"]+)"', page)
+        assert groups and len(set(groups)) == len({g for g in groups})
+        assert "carousel-elec-hdph-001" in groups
+
+    def test_an_unrecognised_mode_falls_back_to_glyphs(self, tmp_path):
+        """A typo in a sweep override must not start hotlinking."""
+        page = markup(build_client(
+            tmp_path, ["apps.onlineshop.product_images=nonsense"]))
+        assert "product-media" not in page
+        assert "example.invalid" not in page
+
+    def test_compact_table_stays_imageless_in_hotlink_mode(self, tmp_path):
+        """The compact_table layout drops imagery entirely; turning images on
+        must not put it back."""
+        client = self.hotlink(tmp_path, ["apps/onlineshop/layout=compact_table"])
+        page = markup(client)
+        assert "<svg" not in page
+        assert "product-media" not in page and "example.invalid" not in page
+
+    def test_mode_is_a_variation_axis_not_a_reimport(self, tmp_path):
+        """URLs live in the database either way, so flipping the mode does not
+        require rebuilding the catalog."""
+        client = build_client(tmp_path)
+        product = shop._row(shop.products, "elec-hdph-001")
+        assert len(json.loads(product.images)) == 3
 
 
 class TestNoEgress:

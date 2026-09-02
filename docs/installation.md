@@ -223,6 +223,43 @@ category, and tints the fallbacks on the page so they are easy to pick out:
     113 matched a glyph keyword, 87 fell back to their category default (tinted)
 ```
 
+#### Hotlinked product photos
+
+The generated pack keeps each product's image URLs in an `images` list, and
+`apps.onlineshop.product_images` chooses what gets drawn:
+
+```bash
+uv run launch.py apps/onlineshop/content=webshop                          # glyphs (default)
+uv run launch.py apps/onlineshop/content=webshop \
+                 apps.onlineshop.product_images=hotlink                   # real photos
+```
+
+Under `hotlink`, a product with several images becomes a carousel: one hidden
+radio per slide and a clickable dot per image, pure CSS, no JavaScript and no
+new dependency — so the controls are real elements an agent can click. A
+product with one image renders it without controls, and a product with none
+falls back to its glyph. The glyph also ships inside every carousel: each
+`<img>` has an `onerror` that reveals it, so a failed fetch degrades to line
+art rather than to a broken-image icon. One failure drops the whole carousel
+to the glyph, deliberately — the common case is "no network", where they all
+fail, and a half-populated carousel is a worse observation than a consistent
+one. `layout=compact_table` stays imageless either way.
+
+!!! warning "Why this is off by default"
+
+    - **The eval nodes have no outbound network.** The images do not arrive
+      there, the page still returns 200, and a screenshot-scored agent is
+      graded on an observation that quietly lost its imagery. This is the
+      exact failure `tests/test_no_egress.py` was written to catch.
+    - **`TestNoEgress` in `tests/test_onlineshop.py` fails under `hotlink`**,
+      by design. It asserts the pages reference no external host.
+    - **The URLs point at Amazon's CDN**, so hotlinking them is subject to
+      whatever terms attach to that.
+
+    Use it for local browsing, or for runs where you have decided the network
+    is genuinely available. An unrecognised value falls back to `glyphs`, so a
+    typo in a sweep override cannot silently start hotlinking.
+
 Keywords match on **word boundaries with an optional plural**, so `pen` hits
 "Fountain Pen" and "Pens" but not "Open" or "Pendant" — worth knowing before
 you add a short keyword, because real retailer titles are long and a bare
