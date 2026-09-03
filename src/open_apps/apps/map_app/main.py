@@ -14,7 +14,7 @@ import requests
 from fasthtml.common import *
 import requests
 import json
-from src.open_apps.theme import legacy_theme_css
+from open_apps.theme import legacy_theme_css
 from datetime import datetime, timezone
 import subprocess
 import time

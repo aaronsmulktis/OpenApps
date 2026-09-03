@@ -10,9 +10,9 @@ import shutil
 from typing import Dict
 import json
 from starlette.responses import Response
-from src.open_apps.apps.start_page.helper import create_logo_header
-from src.open_apps.frontend import local_hdrs
-from src.open_apps.theme import legacy_theme_style
+from open_apps.apps.start_page.helper import create_logo_header
+from open_apps.frontend import local_hdrs
+from open_apps.theme import legacy_theme_style
 
 # Global variables
 _base_hdrs_no_highlight = (

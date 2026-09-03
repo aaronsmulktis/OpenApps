@@ -122,6 +122,9 @@ def render_theme_css(theme: dict) -> str:
         if (not key) or any(not (c.isalnum() or c in "-_") for c in key):
             continue
         val = str(value).replace("\n", " ").replace("\r", " ")
+        # Prevent breaking out of <style> tags if a theme value contains HTML.
+        if "<" in val or ">" in val:
+            continue
         safe_lines.append(f"  --{key}: {val};")
 
     lines = "\n".join(safe_lines)
