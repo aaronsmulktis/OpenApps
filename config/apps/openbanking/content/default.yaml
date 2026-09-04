@@ -20,6 +20,25 @@ routing_number_label: "Routing number"
 show_number_label: "Show full number"
 hide_number_label: "Hide number"
 
+# --- Credit card summary ----------------------------------------------------
+# A card account renders a different summary from a deposit account: the number
+# lives on a card graphic rather than in the figures column, there is no routing
+# number to disclose, and the headline figures are the ones a cardholder acts on
+# (what is owed, the least they can pay, and by when) rather than a balance.
+card_number_label: "Card number"
+card_expires_label: "Expires"
+payment_heading: "Payment"
+statement_balance_label: "Statement balance"
+minimum_payment_label: "Minimum payment due"
+payment_due_label: "Payment due date"
+statement_close_label: "Statement closed"
+# The card's spending headroom. Same underlying figure as `available_credit` on
+# a deposit account, but a cardholder reads it as "what is left", so it gets its
+# own label rather than reusing "Available credit".
+available_to_spend_label: "Available to spend"
+current_balance_label: "Current balance"
+credit_limit_label: "Credit limit"
+
 # --- Transactions panel -----------------------------------------------------
 transactions_heading: "Transactions"
 showing_label: "Showing"
@@ -56,10 +75,16 @@ column_labels:
 # `account_number` is masked in the UI down to its last four digits, which
 # match the digits in the account's display name -- revealing it should confirm
 # what the name already implied, not contradict it. `routing_number` is a
-# property of the bank, so all accounts share one. Both are quoted: they are
-# digit strings, not integers, and unquoted leading zeros would be eaten.
+# property of the bank, so all deposit accounts share one. Both are quoted: they
+# are digit strings, not integers, and unquoted leading zeros would be eaten.
+#
+# `kind` selects the summary the app renders: `deposit` (the balance hero and
+# the account/routing disclosure) or `credit_card` (the card graphic and the
+# payment panel). Omitted means `deposit`, so the noise variants can append a
+# plain checking account without restating it.
 accounts:
   - name: "BUS COMPLETE CHK (...5555)"
+    kind: deposit
     holder: "Acme Industries, Inc"
     account_number: "447109255555"
     routing_number: "123456789"
@@ -89,6 +114,7 @@ accounts:
         balance: 793.49
 
   - name: "BUS SELECT SAVINGS (...8891)"
+    kind: deposit
     holder: "Northgate Supply Co"
     account_number: "620833148891"
     routing_number: "123456789"
@@ -112,13 +138,39 @@ accounts:
         amount: 3500.00
         balance: 22292.13
 
+  # The card. `account_number` is the 16-digit PAN rather than a deposit
+  # account number, so the card graphic can print it in 4-4-4-4 groups; its
+  # tail still matches the display name. Two deliberate safeguards make it
+  # unmistakably synthetic: the leading 9 is not an assigned card-network
+  # prefix (3/4/5/6 and 2221-2720 are), and the number fails a Luhn check, so
+  # anything that validates card numbers will reject it rather than treat it
+  # as live.
+  #
+  # `routing_number: null` is the point of the `kind` split -- a card has no
+  # routing number, so the app omits the row rather than rendering it blank.
+  #
+  # The payment figures are a coherent statement cycle, not three unrelated
+  # numbers: the cycle closed Aug 21 at 872.19 (the running balance after the
+  # Aug 20 charge), the Aug 23 charge of 412.00 landed after the close, and
+  # 872.19 + 412.00 = 1284.19 is today's `present_balance`. So the statement
+  # balance and the current balance genuinely differ, which is what makes
+  # "read the statement balance" a task with one right answer instead of two.
+  # `credit_limit` = present_balance + available_credit = 10000.00.
   - name: "INK BUSINESS CARD (...2043)"
+    kind: credit_card
     holder: "Cardinal Freight LLC"
-    account_number: "915377602043"
-    routing_number: "123456789"
+    account_number: "9024007155992043"
+    routing_number: null
+    card_brand: "Meridian"
+    card_expiration: "09/29"
     available_balance: 0.00
     present_balance: -1284.19
     available_credit: 8715.81
+    credit_limit: 10000.00
+    statement_balance: 872.19
+    statement_close_date: "Aug 21, 2026"
+    minimum_payment: 35.00
+    payment_due_date: "Sep 15, 2026"
     transactions:
       - date: "Aug 23, 2026"
         description: "CLOUD HOST LLC CLOUDHOST.IO WA 08/22 (...2043)"

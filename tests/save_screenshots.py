@@ -58,6 +58,9 @@ ROUTES = (
     # The account detail page carries the summary figures and the ledger, so it
     # is where a theme or layout regression actually shows up.
     RouteSpec("openbanking_account", "/openbanking/accounts/0", ".ob-card"),
+    # The card summary is a different layout from the deposit one -- card
+    # graphic plus payment panel -- so it needs its own baseline.
+    RouteSpec("openbanking_card", "/openbanking/accounts/2", ".ob-cardface"),
     RouteSpec("onlineshop", "/onlineshop/", "input[name='search_query']"),
     RouteSpec("onlineshop_electronics", "/onlineshop/search/electronics/1", ".card"),
     RouteSpec("onlineshop_fashion", "/onlineshop/search/fashion/1", ".card"),

@@ -19,6 +19,17 @@ routing_number_label: "路由号码"
 show_number_label: "显示完整号码"
 hide_number_label: "隐藏号码"
 
+card_number_label: "卡号"
+card_expires_label: "有效期至"
+payment_heading: "还款"
+statement_balance_label: "账单余额"
+minimum_payment_label: "最低还款额"
+payment_due_label: "还款到期日"
+statement_close_label: "账单结算日"
+available_to_spend_label: "可用额度"
+current_balance_label: "当前余额"
+credit_limit_label: "信用额度"
+
 transactions_heading: "交易记录"
 showing_label: "显示"
 showing_options:
@@ -39,6 +50,7 @@ column_labels:
 
 accounts:
   - name: "BUS COMPLETE CHK (...5555)"
+    kind: deposit
     holder: "Acme 实业有限公司"
     account_number: "447109255555"
     routing_number: "123456789"
@@ -68,6 +80,7 @@ accounts:
         balance: 793.49
 
   - name: "BUS SELECT SAVINGS (...8891)"
+    kind: deposit
     holder: "Northgate 供应有限公司"
     account_number: "620833148891"
     routing_number: "123456789"
@@ -91,13 +104,23 @@ accounts:
         amount: 3500.00
         balance: 22292.13
 
+  # The two date strings are translated, like the transaction dates; the
+  # payment-due task scores on a calendar event rather than on the string.
   - name: "INK BUSINESS CARD (...2043)"
+    kind: credit_card
     holder: "Cardinal 货运有限公司"
-    account_number: "915377602043"
-    routing_number: "123456789"
+    account_number: "9024007155992043"
+    routing_number: null
+    card_brand: "Meridian"
+    card_expiration: "09/29"
     available_balance: 0.00
     present_balance: -1284.19
     available_credit: 8715.81
+    credit_limit: 10000.00
+    statement_balance: 872.19
+    statement_close_date: "2026年8月21日"
+    minimum_payment: 35.00
+    payment_due_date: "2026年9月15日"
     transactions:
       - date: "2026年8月23日"
         description: "CLOUD HOST LLC CLOUDHOST.IO WA 08/22 (...2043)"
