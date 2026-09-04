@@ -135,3 +135,74 @@ reconcile_the_largest_account:
     goal: Add a reconciliation todo for that account.
     todo_name: Reconcile BUS SELECT SAVINGS (...8891)
     is_done: false
+
+
+# ==========================================================================
+# Credit card (2-3 apps)
+#
+# These read off the card's payment panel rather than its ledger, which is
+# where the card summary differs from a deposit account's. Two distractors are
+# doing real work in this section:
+#
+#   * The statement balance (872.19) is NOT the current balance (1284.19) --
+#     one charge posted after the cycle closed. An agent that grabs the
+#     largest figure on the page, or the one the ledger ends on, gets it
+#     wrong.
+#   * The minimum payment (35.00) sits next to the statement balance. An agent
+#     that reads "payment" and takes the nearest number gets it wrong.
+#
+# The due date is scored as a *calendar event*, not as a string the agent
+# types back: the date string is translated in the german and mandarin
+# variants ("15. Sep. 2026", "2026年9月15日"), so a string answer would need
+# one expected value per language and the task would stop being the same task
+# across variations.
+# ==========================================================================
+
+add_todo_for_the_card_minimum_payment:
+  _target_: open_apps.tasks.tasks.AddToDoTask
+  goal: Open the 'INK BUSINESS CARD (...2043)' account in the OpenBanking app.
+    Find the minimum payment due on it — not the statement balance and not the
+    current balance. Then add a todo named 'Pay minimum AMOUNT', where AMOUNT is
+    that figure — for example, if the minimum were twelve dollars and thirty-four
+    cents you would add 'Pay minimum 12.34'.
+  todo_name: Pay minimum 35.00
+  is_done: false
+
+schedule_the_card_payment_due_date:
+  _target_: open_apps.tasks.tasks.CompositeTask
+  _convert_: all
+  goal: The 'INK BUSINESS CARD (...2043)' account in the OpenBanking app shows a
+    payment due date. Add a calendar event on that date titled 'Card payment
+    due', leaving the description, location and URL empty and adding no
+    invitees. Then add a todo named 'Card payment due' as well.
+  subtasks:
+  - _target_: open_apps.tasks.tasks.AddEventTask
+    goal: Put the payment due date in the calendar.
+    title: Card payment due
+    date: 2026-09-15
+    description: null
+    location: null
+    url: null
+    invitees: []
+  - _target_: open_apps.tasks.tasks.AddToDoTask
+    goal: Add a matching todo.
+    todo_name: Card payment due
+    is_done: false
+
+report_the_card_statement_balance_and_headroom:
+  _target_: open_apps.tasks.tasks.CompositeTask
+  _convert_: all
+  goal: Open the 'INK BUSINESS CARD (...2043)' account in the OpenBanking app.
+    Send Bob a message containing just the statement balance and nothing else —
+    the balance as of the statement close, not the current balance. Then add a
+    todo named 'Headroom AMOUNT', where AMOUNT is how much is still available to
+    spend on the card.
+  subtasks:
+  - _target_: open_apps.tasks.tasks.SendMessageTask
+    goal: Tell Bob the statement balance.
+    to: Bob
+    message: '872.19'
+  - _target_: open_apps.tasks.tasks.AddToDoTask
+    goal: Add a todo naming the remaining headroom.
+    todo_name: Headroom 8715.81
+    is_done: false

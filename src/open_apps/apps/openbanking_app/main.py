@@ -31,13 +31,31 @@ class Account:
     id: int
     name: str
     holder: str
+    # "deposit" (checking/savings) or "credit_card". Selects which summary the
+    # detail page renders; everything below `available_credit` is card-only and
+    # stays None on a deposit account.
+    kind: str
     # Stored in full; the page masks all but the last four digits until the
     # figure is clicked. Kept as strings, not ints, so leading zeros survive.
+    # On a card this is the 16-digit PAN, printed in 4-4-4-4 groups.
     account_number: str
-    routing_number: str
+    # None on a card -- a card has no routing number, and the app omits the row
+    # rather than rendering an empty one.
+    routing_number: Optional[str]
     available_balance: float
     present_balance: float
     available_credit: float
+    credit_limit: Optional[float] = None
+    card_brand: Optional[str] = None
+    card_expiration: Optional[str] = None
+    statement_balance: Optional[float] = None
+    statement_close_date: Optional[str] = None
+    minimum_payment: Optional[float] = None
+    payment_due_date: Optional[str] = None
+
+    @property
+    def is_card(self) -> bool:
+        return self.kind == "credit_card"
 
 
 @dataclass
@@ -208,6 +226,93 @@ styles = Style("""
         font-size: 0.9rem;
     }
 
+    /* --- Credit card summary ------------------------------------------- */
+    /* The card face reuses the masthead tokens rather than introducing a
+       second pair, so a theme that restyles the header restyles the card with
+       it and there is nothing extra to define. Both still carry the shared
+       fallback, so the card keeps a readable fg/bg pair under `default`,
+       `mono`, `solarized` and the rest. */
+    .ob-card-layout {
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+    .ob-cardface {
+        position: relative;
+        flex: 0 0 auto;
+        width: 21rem;
+        min-height: 12.5rem;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 1.1rem 1.25rem;
+        border-radius: calc(var(--radius) * 1.5);
+        background-color: var(--color-header-bg, var(--color-primary));
+        color: var(--color-header-fg, var(--color-on-primary));
+        border: 1px solid var(--color-border);
+    }
+    .ob-cardface-brand {
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+    /* The disclosure control sits in the card's top-right corner. It has to
+       stay legible on the card face, so it overrides .ob-number-toggle's
+       link colouring rather than inheriting it. */
+    .ob-cardface-toggle {
+        position: absolute;
+        top: 0.9rem;
+        right: 1rem;
+        background: none;
+        border: 1px solid var(--color-header-fg, var(--color-on-primary));
+        border-radius: var(--radius);
+        padding: 0.15rem 0.5rem;
+        margin: 0;
+        width: auto;
+        font-family: inherit;
+        font-size: 0.75rem;
+        font-weight: 600;
+        line-height: 1.4;
+        color: var(--color-header-fg, var(--color-on-primary));
+        cursor: pointer;
+    }
+    .ob-cardface-toggle:hover { opacity: 0.75; }
+    .ob-cardface-spacer { flex: 1 1 auto; }
+    .ob-cardface-number {
+        font-family: var(--font-mono);
+        font-size: 1.15rem;
+        letter-spacing: 0.12em;
+        white-space: nowrap;
+    }
+    .ob-cardface-foot {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 1rem;
+    }
+    .ob-cardface-holder { text-transform: uppercase; letter-spacing: 0.05em; }
+    .ob-cardface-expiry {
+        font-size: var(--font-size-sm);
+        opacity: 0.85;
+        text-transform: uppercase;
+    }
+    /* Chip and network mark are inline SVG: a raster asset would need a
+       per-theme light/dark variant, and a remote one would put a CDN in the
+       request path that tests/test_no_egress.py forbids. `currentColor` makes
+       both inherit the card's foreground token for free. */
+    .ob-cardface-chip, .ob-cardface-mark { display: block; }
+
+    .ob-pay-figures {
+        flex: 1 1 18rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+        gap: 1.25rem 2rem;
+    }
+    .ob-pay-due .ob-figure-value { color: var(--color-danger); }
+    .ob-pay-note { color: var(--color-muted); font-size: var(--font-size-sm); }
+
     .ob-see-more { display: block; text-align: center; margin-top: 1rem; font-weight: 600; }
     .ob-account-row {
         display: flex;
@@ -232,16 +337,35 @@ def set_environment(config):
     print("Populating initial accounts and transactions from config")
     txn_id = 0
     for account_id, account_cfg in enumerate(config.openbanking.accounts):
+        # `.get` on the card-only keys: the noise content variants append plain
+        # checking accounts with `+accounts` and should not have to restate
+        # every field a card happens to need.
+        def opt_str(key):
+            value = account_cfg.get(key, None)
+            return None if value is None else str(value)
+
+        def opt_float(key):
+            value = account_cfg.get(key, None)
+            return None if value is None else float(value)
+
         accounts.insert(
             Account(
                 id=account_id,
                 name=account_cfg.name,
                 holder=account_cfg.holder,
+                kind=account_cfg.get("kind", "deposit"),
                 account_number=str(account_cfg.account_number),
-                routing_number=str(account_cfg.routing_number),
+                routing_number=opt_str("routing_number"),
                 available_balance=float(account_cfg.available_balance),
                 present_balance=float(account_cfg.present_balance),
                 available_credit=float(account_cfg.available_credit),
+                credit_limit=opt_float("credit_limit"),
+                card_brand=opt_str("card_brand"),
+                card_expiration=opt_str("card_expiration"),
+                statement_balance=opt_float("statement_balance"),
+                statement_close_date=opt_str("statement_close_date"),
+                minimum_payment=opt_float("minimum_payment"),
+                payment_due_date=opt_str("payment_due_date"),
             )
         )
         for position, txn_cfg in enumerate(account_cfg.transactions):
@@ -311,6 +435,44 @@ def fmt_money(value: Optional[float]) -> str:
         return "—"
     sign = "-" if value < 0 else ""
     return f"{sign}${abs(value):,.2f}"
+
+
+def group_card_number(value: str, revealed: bool) -> str:
+    """A PAN in 4-4-4-4 groups, masked to its last four until revealed.
+
+    Grouped even while masked, because that grouping is most of what makes the
+    figure read as a card number rather than as an account number -- the whole
+    point of giving the card its own summary.
+    """
+    digits = str(value)
+    shown = digits if revealed else mask_number(digits)
+    return " ".join(shown[i : i + 4] for i in range(0, len(shown), 4))
+
+
+# Inline SVG so the card needs no raster asset (which would want a per-theme
+# light/dark variant) and no remote fetch (which `tests/test_no_egress.py`
+# forbids). Both marks are stroked/filled in `currentColor`, so they inherit
+# the card face's foreground token under every theme.
+_CHIP_SVG = NotStr(
+    '<svg class="ob-cardface-chip" width="38" height="29" viewBox="0 0 38 29" '
+    'fill="none" aria-hidden="true" focusable="false">'
+    '<rect x="0.75" y="0.75" width="36.5" height="27.5" rx="4.5" '
+    'fill="currentColor" fill-opacity="0.22" stroke="currentColor" '
+    'stroke-opacity="0.7" stroke-width="1.5"/>'
+    '<path d="M0.75 9.5H11M0.75 19.5H11M27 9.5H37.25M27 19.5H37.25M11 0.75V28.25'
+    'M27 0.75V28.25M11 14.5H27" stroke="currentColor" stroke-opacity="0.7" '
+    'stroke-width="1.5"/>'
+    "</svg>"
+)
+
+# An invented two-disc network mark. Deliberately not any real network's logo.
+_NETWORK_MARK_SVG = NotStr(
+    '<svg class="ob-cardface-mark" width="46" height="29" viewBox="0 0 46 29" '
+    'fill="none" aria-hidden="true" focusable="false">'
+    '<circle cx="15" cy="14.5" r="13" fill="currentColor" fill-opacity="0.85"/>'
+    '<circle cx="31" cy="14.5" r="13" fill="currentColor" fill-opacity="0.45"/>'
+    "</svg>"
+)
 
 
 def account_rows() -> List[Account]:
@@ -433,9 +595,98 @@ def number_panel(
     )
 
 
+def card_face(account: Account, revealed: bool = False):
+    """The card graphic, with the PAN disclosure in its top-right corner.
+
+    Same disclosure contract as the deposit account's figures: the state lives
+    in the query string, nothing is written back, so revealing a number leaves
+    ``/openbanking_all`` byte-identical.
+    """
+    c = cfg()
+    return Div(
+        Button(
+            c.hide_number_label if revealed else c.show_number_label,
+            type="button",
+            cls="ob-cardface-toggle",
+            aria_expanded="true" if revealed else "false",
+            aria_label=c.card_number_label,
+            hx_get=(
+                f"/openbanking/accounts/{account.id}/numbers"
+                f"?account={int(not revealed)}"
+            ),
+            hx_target="#ob-cardface",
+            hx_swap="outerHTML",
+        ),
+        Div(account.card_brand or "", cls="ob-cardface-brand"),
+        _CHIP_SVG,
+        Span(cls="ob-cardface-spacer"),
+        Div(
+            group_card_number(account.account_number, revealed),
+            cls="ob-cardface-number",
+        ),
+        Div(
+            Div(
+                Div(account.holder, cls="ob-cardface-holder"),
+                Div(
+                    f"{c.card_expires_label} {account.card_expiration}"
+                    if account.card_expiration
+                    else "",
+                    cls="ob-cardface-expiry",
+                ),
+            ),
+            _NETWORK_MARK_SVG,
+            cls="ob-cardface-foot",
+        ),
+        id="ob-cardface",
+        cls="ob-cardface",
+    )
+
+
+def card_summary(account: Account, show_account: bool = False):
+    """A card's summary: the graphic, then the figures a cardholder acts on.
+
+    Ordered by what gets acted on rather than by size -- what is owed, the
+    least that can be paid, and by when -- with the spending headroom and the
+    limit after them. A deposit account's balance hero would be actively
+    misleading here: `available_balance` on a card is 0.00.
+    """
+    c = cfg()
+    figures = [
+        figure(fmt_money(account.statement_balance), c.statement_balance_label),
+        figure(fmt_money(account.minimum_payment), c.minimum_payment_label),
+        Div(
+            Div(account.payment_due_date or "—", cls="ob-figure-value"),
+            Div(c.payment_due_label, cls="ob-figure-label"),
+            cls="ob-pay-due",
+        ),
+        figure(fmt_money(abs(account.present_balance)), c.current_balance_label),
+        figure(fmt_money(account.available_credit), c.available_to_spend_label),
+        figure(fmt_money(account.credit_limit), c.credit_limit_label),
+    ]
+    return Div(
+        # No holder subtitle here: the card face already prints it, and the
+        # deposit summary's name/holder pair would just repeat it two lines up.
+        H2(account.name, cls="ob-account-name"),
+        Div(
+            card_face(account, show_account),
+            Div(*figures, cls="ob-pay-figures"),
+            cls="ob-card-layout",
+        ),
+        P(
+            f"{c.statement_close_label}: {account.statement_close_date}"
+            if account.statement_close_date
+            else "",
+            cls="ob-pay-note",
+        ),
+        cls="ob-summary",
+    )
+
+
 def account_summary(
     account: Account, show_account: bool = False, show_routing: bool = False
 ):
+    if account.is_card:
+        return card_summary(account, show_account)
     c = cfg()
     return Div(
         Div(
@@ -590,6 +841,9 @@ def page(*content):
 @rt("/openbanking")
 def openbanking_index():
     c = cfg()
+    # A card's `available_balance` is 0.00, so listing it under "Available
+    # balance" would tell the agent nothing and imply the card is empty. Cards
+    # show what is owed instead.
     rows = [
         Div(
             Div(
@@ -597,8 +851,20 @@ def openbanking_index():
                 Div(account.holder, cls="ob-figure-label"),
             ),
             Div(
-                Div(fmt_money(account.available_balance), cls="ob-num ob-figure-value"),
-                Div(c.available_balance_label, cls="ob-num ob-figure-label"),
+                Div(
+                    fmt_money(
+                        abs(account.present_balance)
+                        if account.is_card
+                        else account.available_balance
+                    ),
+                    cls="ob-num ob-figure-value",
+                ),
+                Div(
+                    c.current_balance_label
+                    if account.is_card
+                    else c.available_balance_label,
+                    cls="ob-num ob-figure-label",
+                ),
             ),
             cls="ob-account-row",
             id=f"account-{account.id}",
@@ -666,6 +932,10 @@ def openbanking_account_numbers(account_id: int, account: int = 0, routing: int 
     acct = get_account(account_id)
     if acct is None:
         return Div(cfg().no_results_label, cls="ob-empty", id="ob-numbers")
+    if acct.is_card:
+        # A card has one number, not two, and it lives on the graphic -- so the
+        # swap replaces the card face and the `routing` flag is meaningless.
+        return card_face(acct, bool(account))
     return number_panel(acct, bool(account), bool(routing))
 
 

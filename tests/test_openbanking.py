@@ -30,6 +30,7 @@ import copy
 import io
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -163,11 +164,21 @@ class TestContentInvariants:
         by_name = {}
         for account in cfg.apps.openbanking.accounts:
             by_name[account.name] = {
+                "kind": account.get("kind", "deposit"),
                 "account_number": account.account_number,
                 "routing_number": account.routing_number,
                 "available_balance": account.available_balance,
                 "present_balance": account.present_balance,
                 "available_credit": account.available_credit,
+                # Card figures. Numeric, so they hold across variants for the
+                # same reason the balances do. The two *date* strings are
+                # deliberately excluded -- they are translated like the
+                # transaction dates, so the payment-due task scores on a
+                # calendar event rather than on the string the agent read.
+                "credit_limit": account.get("credit_limit", None),
+                "statement_balance": account.get("statement_balance", None),
+                "minimum_payment": account.get("minimum_payment", None),
+                "card_expiration": account.get("card_expiration", None),
                 "amounts": [t.amount for t in account.transactions],
                 "balances": [t.balance for t in account.transactions],
             }
@@ -308,6 +319,125 @@ class TestRendering:
         assert card_markup not in html
 
 
+class TestCreditCardSummary:
+    """A card renders a different summary from a deposit account.
+
+    Account 2 is the card. The point of the split is that a cardholder acts on
+    what is owed and when, not on a balance -- and a card's `available_balance`
+    is 0.00, so the deposit hero would actively mislead.
+    """
+
+    CARD = "/openbanking/accounts/2"
+    CHECKING = "/openbanking/accounts/0"
+
+    def test_card_renders_the_graphic(self, client):
+        html = client.get(self.CARD).text
+        assert 'id="ob-cardface"' in html
+        assert "Meridian" in html
+        assert "Expires 09/29" in html
+        assert "CARDINAL FREIGHT LLC" in html.upper()
+
+    def test_deposit_account_has_no_card_graphic(self, client):
+        assert 'id="ob-cardface"' not in client.get(self.CHECKING).text
+
+    def test_card_number_is_grouped_and_masked_by_default(self, client):
+        html = client.get(self.CARD).text
+        assert "•••• •••• •••• 2043" in html
+        assert "9024007155992043" not in html
+
+    def test_revealing_the_card_number_groups_it_too(self, client):
+        html = client.get(f"{self.CARD}/numbers?account=1").text
+        assert "9024 0071 5599 2043" in html
+
+    def test_detail_route_accepts_the_reveal_flag(self, client):
+        assert "9024 0071 5599 2043" in client.get(f"{self.CARD}?account=1").text
+
+    def test_card_offers_no_routing_disclosure(self, client):
+        """No routing number exists on a card, so no row should claim one."""
+        html = client.get(self.CARD).text
+        assert "Routing number" not in html
+        assert "123456789" not in html
+
+    def test_payment_figures_are_present(self, client):
+        html = client.get(self.CARD).text
+        for label in (
+            "Statement balance",
+            "Minimum payment due",
+            "Payment due date",
+            "Available to spend",
+            "Credit limit",
+        ):
+            assert label in html, label
+        assert "$872.19" in html      # statement balance
+        assert "$35.00" in html       # minimum payment
+        assert "Sep 15, 2026" in html  # due date
+        assert "$8,715.81" in html    # available to spend
+        assert "$10,000.00" in html   # credit limit
+
+    def test_amount_owed_is_shown_unsigned(self, client):
+        """`present_balance` is -1284.19; a cardholder owes 1,284.19.
+
+        Scoped to the summary: the ledger's running-balance column below it is
+        genuinely negative on a card, and should stay that way.
+        """
+        summary = client.get(self.CARD).text.split('class="ob-band"', 1)[0]
+        assert "$1,284.19" in summary
+        assert "-$1,284.19" not in summary
+
+    def test_index_shows_what_is_owed_not_a_zero_balance(self, client):
+        """The card's `available_balance` is 0.00 and would read as empty."""
+        html = client.get("/openbanking").text
+        assert "$1,284.19" in html
+
+    def test_statement_balance_differs_from_the_current_balance(self, client):
+        """Otherwise "read the statement balance" has two right answers."""
+        accounts = client.get("/openbanking_all").json()["accounts"]
+        card = next(a for a in accounts if a["kind"] == "credit_card")
+        assert card["statement_balance"] != abs(card["present_balance"])
+
+    def test_the_seeded_cycle_is_arithmetically_coherent(self, client):
+        accounts = client.get("/openbanking_all").json()["accounts"]
+        card = next(a for a in accounts if a["kind"] == "credit_card")
+        assert card["credit_limit"] == pytest.approx(
+            abs(card["present_balance"]) + card["available_credit"]
+        )
+        # The one charge posted after the statement closed.
+        assert abs(card["present_balance"]) - card["statement_balance"] == pytest.approx(
+            412.00
+        )
+
+    def test_card_number_is_not_a_plausible_live_pan(self, client):
+        """Two safeguards: an unassigned network prefix, and a failing Luhn."""
+        accounts = client.get("/openbanking_all").json()["accounts"]
+        card = next(a for a in accounts if a["kind"] == "credit_card")
+        pan = card["account_number"]
+        assert len(pan) == 16 and pan.isdigit()
+        assert pan[0] not in "23456", "leading digit is an assigned network range"
+        total = 0
+        for index, digit in enumerate(reversed([int(d) for d in pan])):
+            if index % 2:
+                digit *= 2
+                if digit > 9:
+                    digit -= 9
+            total += digit
+        assert total % 10 != 0, "a Luhn-valid number could be mistaken for live"
+
+    def test_revealing_the_card_does_not_mutate_state(self, client):
+        before = client.get("/openbanking_all").text
+        client.get(f"{self.CARD}/numbers?account=1")
+        client.get(f"{self.CARD}?account=1")
+        assert client.get("/openbanking_all").text == before
+
+    def test_card_graphic_survives_a_theme_without_banking_tokens(self, client):
+        """The face uses the masthead pair, which always carries a fallback."""
+        from open_apps.apps.openbanking_app.main import styles
+
+        css = str(styles)
+        face = css.split(".ob-cardface {", 1)[1].split("}", 1)[0]
+        assert "var(--color-header-bg, var(--color-primary))" in face
+        assert "var(--color-header-fg, var(--color-on-primary))" in face
+
+
 class TestAccountNumbers:
     """The click-to-reveal account and routing figures.
 
@@ -410,15 +540,29 @@ class TestAccountIdentity:
             assert account.account_number.endswith(shown.group(1))
 
     def test_routing_number_is_shared_and_well_formed(self, accounts):
-        routing = {a.routing_number for a in accounts}
-        assert len(routing) == 1, "one bank, one routing number"
+        """One bank, one routing number -- across the deposit accounts only.
+
+        A credit card has no routing number, which is the whole reason `kind`
+        exists: the app omits the row rather than rendering it blank.
+        """
+        deposits = [a for a in accounts if a.get("kind", "deposit") == "deposit"]
+        assert deposits, "the fixture should still hold deposit accounts"
+        routing = {a.routing_number for a in deposits}
+        assert len(routing) == 1
         value = routing.pop()
         assert value.isdigit() and len(value) == 9
+
+    def test_cards_have_no_routing_number(self, accounts):
+        cards = [a for a in accounts if a.get("kind", "deposit") == "credit_card"]
+        assert cards, "the seed should still hold a card"
+        for card in cards:
+            assert card.routing_number is None
 
     def test_numbers_are_strings_so_leading_zeros_survive(self, accounts):
         for account in accounts:
             assert isinstance(account.account_number, str)
-            assert isinstance(account.routing_number, str)
+            if account.routing_number is not None:
+                assert isinstance(account.routing_number, str)
 
 
 class TestFiltering:
@@ -591,3 +735,44 @@ class TestTaskAnswersMatchTheSeed:
         """A tie would make the task unscoreable."""
         balances = sorted((a.available_balance for a in accounts.values()), reverse=True)
         assert balances[0] > balances[1]
+
+    # --- Credit card ------------------------------------------------------
+
+    @pytest.fixture(scope="class")
+    def card(self, accounts):
+        return accounts["INK BUSINESS CARD (...2043)"]
+
+    def test_card_minimum_payment(self, card):
+        expected = self._expected("add_todo_for_the_card_minimum_payment")
+        assert _norm(expected) == _norm(f"Pay minimum {card.minimum_payment:.2f}")
+
+    def test_card_statement_balance_and_headroom(self, card):
+        message = self._expected(
+            "report_the_card_statement_balance_and_headroom", field="message", index=0
+        )
+        todo = self._expected(
+            "report_the_card_statement_balance_and_headroom", index=1
+        )
+        assert _norm(message) == _norm(f"{card.statement_balance:.2f}")
+        assert _norm(todo) == _norm(f"Headroom {card.available_credit:.2f}")
+
+    def test_card_payment_due_date_matches_the_seed(self, card):
+        """The goal is scored as a calendar date, so the seeded *string* and the
+        task's ISO date have to agree -- nothing else ties them together."""
+        date = str(self._expected(
+            "schedule_the_card_payment_due_date", field="date", index=0
+        ))
+        parsed = datetime.strptime(card.payment_due_date, "%b %d, %Y").date()
+        assert date == parsed.isoformat()
+
+    def test_the_card_distractors_are_actually_distinct(self, card):
+        """Each payment figure must be unique on the page, or an agent that
+        grabbed the wrong one would still score."""
+        figures = [
+            card.statement_balance,
+            card.minimum_payment,
+            abs(card.present_balance),
+            card.available_credit,
+            card.credit_limit,
+        ]
+        assert len(set(figures)) == len(figures), figures
