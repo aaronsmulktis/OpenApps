@@ -16,6 +16,7 @@ unrelated todo/calendar task's reward. Scorable work therefore lands in another
 app -- the bank supplies the information-retrieval half of a ``CompositeTask``
 and the delta shows up in todo/calendar/messenger.
 """
+
 from fasthtml.common import *
 from dataclasses import dataclass
 import json
@@ -337,15 +338,19 @@ def get_account(account_id: int) -> Optional[Account]:
 # german/mandarin variants), so the predicate is keyed off the option's
 # *index* in `showing_options`, not its text.
 
-def filter_txns(txns: List[Transaction], showing_index: int, query: str) -> List[Transaction]:
-    if showing_index == 1:      # deposits / money in
+
+def filter_txns(
+    txns: List[Transaction], showing_index: int, query: str
+) -> List[Transaction]:
+    if showing_index == 1:  # deposits / money in
         txns = [t for t in txns if t.amount > 0]
-    elif showing_index == 2:    # withdrawals / money out
+    elif showing_index == 2:  # withdrawals / money out
         txns = [t for t in txns if t.amount < 0]
     if query:
         needle = query.strip().lower()
         txns = [
-            t for t in txns
+            t
+            for t in txns
             if needle in t.description.lower() or needle in t.type.lower()
         ]
     return txns
@@ -354,11 +359,11 @@ def filter_txns(txns: List[Transaction], showing_index: int, query: str) -> List
 # ---------------------------------------------------------------------------
 # Components.
 
+
 def masthead():
     c = cfg()
     actions = [
-        Button(label, cls="ob-ghost-btn", type="button")
-        for label in c.nav_actions
+        Button(label, cls="ob-ghost-btn", type="button") for label in c.nav_actions
     ]
     return Div(
         Span("☰", cls="ob-menu-icon"),
@@ -416,7 +421,9 @@ def number_row(account: Account, kind: str, revealed: bool, other_revealed: bool
     )
 
 
-def number_panel(account: Account, show_account: bool = False, show_routing: bool = False):
+def number_panel(
+    account: Account, show_account: bool = False, show_routing: bool = False
+):
     """The two stacked, independently revealable figures."""
     return Div(
         number_row(account, "account", show_account, show_routing),
@@ -426,7 +433,9 @@ def number_panel(account: Account, show_account: bool = False, show_routing: boo
     )
 
 
-def account_summary(account: Account, show_account: bool = False, show_routing: bool = False):
+def account_summary(
+    account: Account, show_account: bool = False, show_routing: bool = False
+):
     c = cfg()
     return Div(
         Div(
@@ -519,7 +528,11 @@ def ledger(account: Account, showing_index: int, query: str):
         body = txn_table(txns)
     return Div(
         body,
-        A(c.see_more_label, href=f"/openbanking/accounts/{account.id}", cls="ob-see-more"),
+        A(
+            c.see_more_label,
+            href=f"/openbanking/accounts/{account.id}",
+            cls="ob-see-more",
+        ),
         id="ob-ledger",
     )
 
@@ -573,8 +586,9 @@ def page(*content):
 # ---------------------------------------------------------------------------
 # Routes.
 
+
 @rt("/openbanking")
-def get():
+def openbanking_index():
     c = cfg()
     rows = [
         Div(
@@ -598,16 +612,25 @@ def get():
     return page(
         Div(
             H2(c.accounts_heading, cls="ob-band-heading"),
-            Div(*rows, cls="ob-card") if rows else Div(c.no_results_label, cls="ob-empty"),
-            A("Return to List of Apps", href="/", role="button", cls="contrast",
-              style="margin-top: 1rem;"),
+            Div(*rows, cls="ob-card")
+            if rows
+            else Div(c.no_results_label, cls="ob-empty"),
+            A(
+                "Return to List of Apps",
+                href="/",
+                role="button",
+                cls="contrast",
+                style="margin-top: 1rem;",
+            ),
             cls="ob-page",
         )
     )
 
 
 @rt("/openbanking/accounts/{account_id}")
-def get(account_id: int, showing: int = 0, q: str = "", account: int = 0, routing: int = 0):
+def openbanking_account_detail(
+    account_id: int, showing: int = 0, q: str = "", account: int = 0, routing: int = 0
+):
     acct = get_account(account_id)
     if acct is None:
         return page(Div(cfg().no_results_label, cls="ob-page"))
@@ -624,7 +647,7 @@ def get(account_id: int, showing: int = 0, q: str = "", account: int = 0, routin
 
 
 @rt("/openbanking/accounts/{account_id}/ledger")
-def get(account_id: int, showing: int = 0, q: str = ""):
+def openbanking_account_ledger(account_id: int, showing: int = 0, q: str = ""):
     """htmx partial: the filtered/searched ledger only."""
     account = get_account(account_id)
     if account is None:
@@ -633,7 +656,7 @@ def get(account_id: int, showing: int = 0, q: str = ""):
 
 
 @rt("/openbanking/accounts/{account_id}/numbers")
-def get(account_id: int, account: int = 0, routing: int = 0):
+def openbanking_account_numbers(account_id: int, account: int = 0, routing: int = 0):
     """htmx partial: the account/routing figures at their requested visibility.
 
     Disclosure only -- reveals nothing that is not already seeded and writes
