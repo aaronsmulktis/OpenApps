@@ -42,9 +42,7 @@ def get_current_state(url: str) -> dict:
     state["todo"] = safe_get_json(url + "/todo_all")
     state["calendar"] = safe_get_json(url + "/calendar_all")
     state["map"] = safe_get_json(url + "/maps/landmarks")
-    state["messenger"] = safe_get_json(url + "/messages_all")
-    state["codeeditor"] = safe_get_json(url + "/codeeditor_all")
-    state["openbanking"] = safe_get_json(url + "/openbanking_all")
+    state["openbanking"] = safe_get_json(url + "/openbanking_all") or {}
     try:
         state["online_shop"] = safe_get_json(url + "/onlineshop_all")
     except Exception:
