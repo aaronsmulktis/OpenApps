@@ -118,6 +118,14 @@ without touching any shared code -- `openbanking` is the worked example, with a
 Consume those through a fallback, `var(--color-header-bg, var(--color-primary))`,
 so the app stays legible under the themes that do not define them.
 
+One caveat worth knowing before adding a dark theme: Pico ships its own palette
+in `--pico-*` properties and applies it to elements an app rarely restyles --
+table cells, form fields and every heading. Tokens cannot reach those, so a
+dark theme alone leaves a white ledger under a dark page. `openbanking` shows
+the fix: it reads `assets.tone` to set Pico's `data-theme` on its page wrapper,
+then re-points the handful of `--pico-*` properties its markup touches at its
+own tokens.
+
 #### Layout
 
 ```shell
@@ -129,6 +137,16 @@ Available layouts: `todo` has `default` and `kanban_board`; `start_page` has
 `default`, `broken_logos` (icons detached from their tiles) and
 `clickable_logos`; `openbanking` has `default` and `card_list`; the other apps
 currently have `default` only.
+
+A layout carries structural knobs as well as a shape. `openbanking`'s
+`visible_transactions` (default 4) is how many ledger rows show before the
+"See more activity" toggle; the rest are one click away, so finding a figure
+takes navigating the ledger rather than reading one screenshot. Set it to `0`
+to put the whole ledger on screen:
+
+```shell
+uv run launch.py apps.openbanking.visible_transactions=0
+```
 
 The two axes compose, so structure can be varied independently of the palette:
 
@@ -175,6 +193,28 @@ variant, and `config/apps/maps/default.yaml` for behaviour (map zoom, tile
 layer, route planning) that is neither.
 
 Optional: to save screenshots of all apps with a specific variation for testing, we offer `tests/save_screenshots.py --variation default --output-dir outputs/2026-04-13/default/` to make this easy.
+
+##### Generating more OpenBanking transactions
+
+A bank ledger has to stay arithmetically coherent -- each row's `balance` is
+the running balance after that posting, so a row appended to the end chains off
+the oldest existing one. `openbanking-gen-txns` does that arithmetic and emits
+seed YAML in the content files' own style:
+
+```shell
+# Preview three rows for the checking account
+uv run openbanking-gen-txns --account "BUS COMPLETE CHK (...5555)" --count 3
+
+# Write two small fee/interest rows into the card, in place
+uv run openbanking-gen-txns --account 2043 --count 2 --max-amount 80 \
+    --types Fee Interest --in-place
+```
+
+The same `--seed` always produces the same rows, and nothing is written to the
+running database -- the app is read-only, and `/openbanking_all` has to stay
+byte-stable. `--types` and `--max-amount` are how you stay clear of the figures
+`config/tasks/openbanking.yaml` reads off an account; re-run
+`pytest tests/test_openbanking.py` afterwards, which checks those.
 
 ## Exposing OpenApps as an MCP server
 

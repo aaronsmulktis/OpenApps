@@ -36,3 +36,12 @@ tokens:
   color-credit: "#86c5fa"
   color-debit: "#f5f7fa"
   color-rule: "#f5f7fa"
+
+# `tone: dark` is not decoration. Pico ships a light and a dark palette in its
+# own `--pico-*` properties and picks between them with `data-theme`; the
+# openbanking app reads this key to set it (see `page()` in
+# openbanking_app/main.py). Without it Pico keeps painting white table cells,
+# white form fields and near-black headings underneath the dark tokens above.
+assets:
+  tone: dark
+  icon_set: color

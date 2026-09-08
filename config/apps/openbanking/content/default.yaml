@@ -51,7 +51,11 @@ showing_options:
   - "Withdrawals"
 search_placeholder: "Search transactions"
 search_label: "Search"
+# The ledger shows `apps.openbanking.visible_transactions` rows (a layout key)
+# and hides the rest behind this toggle, which swaps to `see_less_label` once
+# the full ledger is open.
 see_more_label: "See more activity"
+see_less_label: "See less activity"
 pending_label: "Pending"
 no_results_label: "No transactions match your search."
 column_labels:
@@ -112,6 +116,25 @@ accounts:
         type: "Card"
         amount: -1078.81
         balance: 793.49
+      # From here down the rows sit behind "See more activity" under the
+      # default `visible_transactions: 4`. Nothing a task reads lives past the
+      # cut -- the largest Card charge is still the -1078.81 above, and the
+      # -64.20 below is deliberately well under it.
+      - date: "Aug 23, 2026"
+        description: "ORIG CO NAME:PAYROLL PARTNERS ORIG ID:456 DESC DATE:260822 CO ENTRY DESCR:PAYROLL SEC:CCD TRACE#:456 EED:260823 IND ID: IND NAME:ACMEIND TRN: 456DEF"
+        type: "ACH debit"
+        amount: -1500.00
+        balance: 1872.30
+      - date: "Aug 22, 2026"
+        description: "DEPOSIT REMOTE CAPTURE BATCH 00187 ITEM COUNT 003 PROCESSED 08/22 09:41:12 CT"
+        type: "Deposit"
+        amount: 2450.00
+        balance: 3372.30
+      - date: "Aug 20, 2026"
+        description: "PRINT SHOP 44 PRINTSHOP44.COM TX 08/19 (...5432)"
+        type: "Card"
+        amount: -64.20
+        balance: 922.30
 
   - name: "BUS SELECT SAVINGS (...8891)"
     kind: deposit
@@ -137,6 +160,23 @@ accounts:
         type: "Transfer"
         amount: 3500.00
         balance: 22292.13
+      # Behind "See more activity". The available balance the task reads is an
+      # account-level figure, not the ledger's, so none of this moves it.
+      - date: "Jul 01, 2026"
+        description: "INTEREST PAYMENT"
+        type: "Interest"
+        amount: 15.88
+        balance: 18792.13
+      - date: "Jun 18, 2026"
+        description: "TRANSFER TO CHK ...5555"
+        type: "Transfer"
+        amount: -1200.00
+        balance: 18776.25
+      - date: "Jun 01, 2026"
+        description: "TRANSFER FROM CHK ...5555"
+        type: "Transfer"
+        amount: 2500.00
+        balance: 19976.25
 
   # The card. `account_number` is the 16-digit PAN rather than a deposit
   # account number, so the card graphic can print it in 4-4-4-4 groups; its
@@ -187,3 +227,23 @@ accounts:
         type: "Payment"
         amount: 900.00
         balance: -659.75
+      # Behind "See more activity", and deliberately none of them type `Card`:
+      # `log_business_card_charges_as_todos` tells the agent this account has
+      # exactly two Card transactions, so a third would make the task
+      # unsolvable rather than harder. These are the prior cycle's postings,
+      # all before the Aug 21 statement close.
+      - date: "Aug 12, 2026"
+        description: "ANNUAL MEMBERSHIP FEE"
+        type: "Fee"
+        amount: -95.00
+        balance: -1559.75
+      - date: "Aug 08, 2026"
+        description: "INTEREST CHARGE ON PURCHASES"
+        type: "Interest"
+        amount: -18.32
+        balance: -1464.75
+      - date: "Aug 05, 2026"
+        description: "RETURN CREDIT FLEET UNIFORM SUPPLY (...2043)"
+        type: "Refund"
+        amount: 146.55
+        balance: -1446.43

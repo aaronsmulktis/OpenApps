@@ -593,6 +593,152 @@ class TestFiltering:
         assert "COOL APPS" not in response.text
 
 
+class TestSeeMoreActivity:
+    """The ledger is truncated, and the toggle is the only thing that opens it.
+
+    Account 0 seeds seven postings against a `visible_transactions` of four, so
+    the last three -- PAYROLL PARTNERS, the remote-capture deposit and PRINT
+    SHOP 44 -- are behind the toggle. `COOL APPS INC` is the fourth and stays
+    above the cut on purpose: `add_todo_to_review_largest_card_charge` reads it
+    off the first screen.
+    """
+
+    DETAIL = "/openbanking/accounts/0"
+    LEDGER = "/openbanking/accounts/0/ledger"
+    HIDDEN = "PRINT SHOP 44"
+    VISIBLE = "COOL APPS INC"
+
+    def test_the_tail_of_the_ledger_is_hidden(self, client):
+        html = client.get(self.DETAIL).text
+        assert self.VISIBLE in html
+        assert self.HIDDEN not in html
+        assert "See more activity" in html
+
+    def test_expanding_reveals_it(self, client):
+        html = client.get(f"{self.DETAIL}?expand=1").text
+        assert self.HIDDEN in html
+        assert "See less activity" in html
+
+    def test_the_partial_honours_the_flag_too(self, client):
+        assert self.HIDDEN not in client.get(f"{self.LEDGER}?expand=0").text
+        assert self.HIDDEN in client.get(f"{self.LEDGER}?expand=1").text
+
+    def test_a_result_set_that_fits_has_no_toggle(self, client):
+        """Searching down to three rows is not a truncated ledger."""
+        html = client.get(f"{self.LEDGER}?showing=0&q=transfer").text
+        assert "See more activity" not in html
+        assert "See less activity" not in html
+
+    def test_the_toggle_carries_the_live_filter(self, client):
+        """Expanding after typing must not throw the search away, so the
+        control includes the two inputs rather than baking in their values."""
+        html = client.get(self.DETAIL).text
+        assert 'hx-include="#showing, #ob-search"' in html
+
+    def test_the_toggle_is_a_real_link_as_well(self, client):
+        """It has to survive without htmx: the detail route reads `expand`."""
+        html = client.get(self.DETAIL).text
+        assert "/openbanking/accounts/0?showing=0&amp;q=&amp;expand=1" in html
+
+    def test_truncation_applies_under_card_list_too(self, client):
+        original = app.config.openbanking.layout
+        try:
+            app.config.openbanking.layout = "card_list"
+            assert self.HIDDEN not in client.get(self.DETAIL).text
+            assert self.HIDDEN in client.get(f"{self.DETAIL}?expand=1").text
+        finally:
+            app.config.openbanking.layout = original
+
+    def test_zero_disables_truncation(self, client):
+        original = app.config.openbanking.visible_transactions
+        try:
+            app.config.openbanking.visible_transactions = 0
+            html = client.get(self.DETAIL).text
+            assert self.HIDDEN in html
+            assert "See more activity" not in html
+        finally:
+            app.config.openbanking.visible_transactions = original
+
+    def test_expanding_does_not_mutate_state(self, client):
+        before = client.get("/openbanking_all").json()
+        client.get(f"{self.DETAIL}?expand=1")
+        client.get(f"{self.LEDGER}?expand=1")
+        assert client.get("/openbanking_all").json() == before
+
+    def test_every_seeded_account_has_something_behind_the_toggle(self, client):
+        """The point of the change: each account, not just the busiest one."""
+        for account_id in range(len(SEEDED_ACCOUNTS)):
+            html = client.get(f"/openbanking/accounts/{account_id}").text
+            assert "See more activity" in html, f"account {account_id} is not truncated"
+
+
+class TestPicoBridge:
+    """Pico's own palette has to follow the theme, not sit under it.
+
+    Pico paints table cells, form fields and headings through `--pico-*`
+    properties that a design token cannot reach, which is what left the dark
+    theme with a white ledger and unreadable titles.
+    """
+
+    def test_the_wrapper_carries_the_palette_polarity(self, client):
+        from open_apps.apps.openbanking_app.main import pico_theme
+
+        original = app.config.openbanking.theme
+        try:
+            app.config.openbanking.theme = "openbanking_dark"
+            assert pico_theme() == "dark"
+            assert 'data-theme="dark"' in client.get("/openbanking").text
+            app.config.openbanking.theme = "openbanking"
+            assert pico_theme() == "light"
+            assert 'data-theme="light"' in client.get("/openbanking").text
+        finally:
+            app.config.openbanking.theme = original
+
+    def test_a_theme_without_a_tone_is_treated_as_light(self, client):
+        from open_apps.apps.openbanking_app.main import pico_theme
+
+        original = app.config.openbanking.theme
+        try:
+            app.config.openbanking.theme = "mono"
+            assert pico_theme() == "light"
+        finally:
+            app.config.openbanking.theme = original
+
+    @pytest.mark.parametrize(
+        "prop",
+        [
+            "--pico-color",
+            "--pico-background-color",
+            "--pico-h2-color",
+            "--pico-table-border-color",
+            "--pico-form-element-background-color",
+            "--pico-form-element-color",
+            "--pico-contrast-background",
+        ],
+    )
+    def test_the_properties_the_markup_touches_are_bridged(self, client, prop):
+        assert f"{prop}: var(--color-" in client.get("/openbanking").text
+
+    def test_the_bridge_is_scoped_to_this_app(self, client):
+        """These pages are mounted alongside every other app's; Pico's defaults
+        are the right answer everywhere else."""
+        html = client.get("/openbanking").text
+        assert ".ob-root {" in html
+        assert ":root {\n        --pico-" not in html
+
+    def test_the_masthead_wordmark_takes_the_header_foreground(self, client):
+        """Pico colours every heading explicitly, so the H1 in the masthead does
+        not inherit the bar's foreground -- it has to be told."""
+        html = client.get("/openbanking").text
+        assert ".ob-masthead h1" in html
+
+    @pytest.mark.parametrize("name", ["openbanking", "openbanking_dark"])
+    def test_both_banking_themes_declare_a_tone(self, name):
+        from open_apps.theme import load_theme
+
+        assert load_theme(name)["assets"]["tone"] in {"light", "dark"}
+
+
 # ---------------------------------------------------------------------------
 # Reward-state stability -- the part that can break other apps
 # ---------------------------------------------------------------------------
@@ -776,3 +922,131 @@ class TestTaskAnswersMatchTheSeed:
             card.credit_limit,
         ]
         assert len(set(figures)) == len(figures), figures
+
+
+# ---------------------------------------------------------------------------
+# The transaction generator CLI
+# ---------------------------------------------------------------------------
+class TestTransactionGenerator:
+    """``openbanking-gen-txns`` has to produce seed data, not plausible noise.
+
+    Two properties carry the weight. The running balance must still reconcile
+    row to row, or the ledger stops being worth reading; and the same seed must
+    produce byte-identical output, because the app seeds its tables from this
+    config and ``/openbanking_all`` has to be byte-stable across runs.
+    """
+
+    @pytest.fixture(scope="class")
+    def gen(self):
+        from open_apps.apps.openbanking_app import generate_transactions
+
+        return generate_transactions
+
+    @pytest.fixture(scope="class")
+    def default_accounts(self, gen):
+        return gen.load_accounts(gen.content_path("default"))
+
+    def _rows(self, gen, account, **kwargs):
+        options = dict(
+            count=3,
+            seed=0,
+            max_amount=500.0,
+            types=None,
+            date_format=gen.DATE_FORMAT,
+            start=None,
+        )
+        options.update(kwargs)
+        return gen.generate(account, **options)
+
+    @pytest.mark.parametrize("name", SEEDED_ACCOUNTS)
+    def test_generated_rows_chain_off_the_existing_ledger(
+        self, gen, default_accounts, name
+    ):
+        account = gen.find_account(default_accounts, name)
+        extended = dict(account)
+        extended["transactions"] = list(account["transactions"]) + self._rows(
+            gen, account
+        )
+        gen.check_chain(extended)  # raises if any row fails to reconcile
+
+    def test_the_same_seed_gives_the_same_rows(self, gen, default_accounts):
+        account = gen.find_account(default_accounts, SEEDED_ACCOUNTS[0])
+        assert self._rows(gen, account, seed=7) == self._rows(gen, account, seed=7)
+
+    def test_a_different_seed_gives_different_rows(self, gen, default_accounts):
+        account = gen.find_account(default_accounts, SEEDED_ACCOUNTS[0])
+        assert self._rows(gen, account, seed=7) != self._rows(gen, account, seed=8)
+
+    def test_dates_run_backwards_from_the_oldest_posting(self, gen, default_accounts):
+        account = gen.find_account(default_accounts, SEEDED_ACCOUNTS[0])
+        oldest = gen.parse_date(account["transactions"][-1]["date"])
+        dates = [
+            datetime.strptime(row["date"], gen.DATE_FORMAT).date()
+            for row in self._rows(gen, account, count=5)
+        ]
+        assert dates == sorted(dates, reverse=True)
+        assert dates[0] < oldest
+
+    def test_amounts_stay_under_the_ceiling(self, gen, default_accounts):
+        """The ceiling is how a caller keeps clear of a figure a task reads."""
+        account = gen.find_account(default_accounts, SEEDED_ACCOUNTS[0])
+        rows = self._rows(gen, account, count=25, max_amount=100.0)
+        assert all(abs(row["amount"]) <= 100.0 for row in rows)
+
+    def test_types_can_be_restricted(self, gen, default_accounts):
+        """`log_business_card_charges_as_todos` says the card has exactly two
+        Card transactions, so a caller has to be able to exclude that type."""
+        card = gen.find_account(default_accounts, SEEDED_ACCOUNTS[2])
+        rows = self._rows(gen, card, count=20, types=["Fee", "Interest"])
+        assert {row["type"] for row in rows} <= {"Fee", "Interest"}
+
+    def test_a_card_and_a_deposit_account_draw_from_different_wording(
+        self, gen, default_accounts
+    ):
+        card = gen.find_account(default_accounts, SEEDED_ACCOUNTS[2])
+        checking = gen.find_account(default_accounts, SEEDED_ACCOUNTS[0])
+        card_types = {row["type"] for row in self._rows(gen, card, count=30)}
+        deposit_types = {row["type"] for row in self._rows(gen, checking, count=30)}
+        assert "Payment" in card_types and "Payment" not in deposit_types
+        assert "Transfer" in deposit_types and "Transfer" not in card_types
+
+    def test_an_account_can_be_named_by_its_last_four(self, gen, default_accounts):
+        assert gen.find_account(default_accounts, "5555")["name"] == SEEDED_ACCOUNTS[0]
+
+    def test_the_seeded_ledgers_reconcile(self, gen, default_accounts):
+        """The generator's own invariant, turned on the hand-written seed."""
+        for account in default_accounts:
+            gen.check_chain(account)
+
+    def test_splicing_preserves_comments_and_reconciles(
+        self, gen, default_accounts, tmp_path
+    ):
+        source = gen.content_path("default")
+        target = tmp_path / "default.yaml"
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+
+        account = gen.find_account(default_accounts, SEEDED_ACCOUNTS[1])
+        rows = self._rows(gen, account, count=2, seed=3)
+        gen.splice(target, str(account["name"]), gen.render_yaml(rows, indent=6), 2)
+
+        written = gen.load_accounts(target)
+        # Only the named account grew, and it still reconciles.
+        for name in SEEDED_ACCOUNTS:
+            before = len(gen.find_account(default_accounts, name)["transactions"])
+            after = len(gen.find_account(written, name)["transactions"])
+            assert after == before + (2 if name == SEEDED_ACCOUNTS[1] else 0)
+            gen.check_chain(gen.find_account(written, name))
+        # The comments that explain the seed are the reason this is a text
+        # splice rather than a yaml round-trip.
+        assert "# The card." in target.read_text(encoding="utf-8")
+
+    def test_a_broken_splice_leaves_the_file_untouched(self, gen, tmp_path):
+        source = gen.content_path("default")
+        target = tmp_path / "default.yaml"
+        original = source.read_text(encoding="utf-8")
+        target.write_text(original, encoding="utf-8")
+
+        # Claiming three rows while inserting one fails the post-write check.
+        with pytest.raises(ValueError):
+            gen.splice(target, SEEDED_ACCOUNTS[0], '      - date: "Jan 01, 2026"\n', 3)
+        assert target.read_text(encoding="utf-8") == original
