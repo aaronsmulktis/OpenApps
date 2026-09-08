@@ -46,12 +46,19 @@ uv run launch.py 'apps.todo.init_todos=[["Call Mom", false]]'
 
 OpenApps also comes with pre-defined variations that can affect the content and appearance of apps.
 
-#### Appearance
+Appearance is split along two axes:
+
+* **Theme** -- *look*: colors, typography, shape. One shared set of design
+  tokens in `config/apps/theme/`, applied to **every** app at once.
+* **Layout** -- *structure*: how an individual app arranges itself. Per-app,
+  under `config/apps/<app>/layout/`.
+
+#### Theme
 
 /// tab | challenging font
 
     ::bash
-    export APPEARANCE=challenging_font
+    export THEME=challenging_font
 
 
 ![landing](images/landing-challenging-font.png)
@@ -59,25 +66,62 @@ OpenApps also comes with pre-defined variations that can affect the content and 
 /// tab | dark theme
 
     ::bash
-    export APPEARANCE=dark_theme
+    export THEME=dark
 
 ![landing](images/landing-dark.png)
 ///
 /// tab | default
 
     ::bash
-    export APPEARANCE=default
+    export THEME=default
 
 ![landing](images/landing.png)
 
 ///
 
-Launch specific apps with selected appearance:
+A single override themes every app:
 ```shell
-uv run launch.py apps/start_page/appearance=$APPEARANCE
+uv run launch.py apps/theme=$THEME
 ```
 
-Or specific apps with: `apps/calendar/appearance=$APPEARANCE`.
+Or one app only, leaving the rest on the global theme:
+`uv run launch.py apps.calendar.theme=$THEME`.
+
+Shipped themes: `default`, `dark`, `mono`, `challenging_font`, `colorblind`,
+`solarized`, `material`, `bootstrap`. Adding one means adding a yaml file to
+`config/apps/theme/` -- no app code changes.
+
+A theme file is a set of design tokens plus a small `assets` block:
+
+```yaml
+# config/apps/theme/dark.yaml
+name: dark
+tokens:
+  color-bg: "#121212"       # -> --color-bg, consumed as var(--color-bg)
+  color-primary: "#bb86fc"
+  font-family: "'Inter', system-ui, sans-serif"
+  radius: "4px"
+assets:
+  tone: dark                # apps map this onto their own non-CSS assets
+  icon_set: bw
+```
+
+Every `tokens` entry becomes a CSS custom property. `assets` covers the
+choices a CSS variable cannot reach -- the start page's raster icons, the
+Leaflet tile layer, the CodeMirror stylesheet. The keys are deliberately
+app-agnostic: the theme says `tone: dark` and each app picks its own dark
+asset, so a theme file never has to know which apps exist.
+
+#### Layout
+
+```shell
+uv run launch.py apps/todo/layout=kanban_board
+uv run launch.py apps/start_page/layout=broken_logos
+```
+
+Available layouts: `todo` has `default` and `kanban_board`; `start_page` has
+`default`, `broken_logos` (icons detached from their tiles) and
+`clickable_logos`; the other apps currently have `default` only.
 
 #### Content
 
@@ -111,7 +155,17 @@ uv run launch.py apps/start_page/content=$CONTENT
 
 Or specific apps with: `apps/calendar/content=$CONTENT`.
 
-You can see the specific variables for each defined in the individual apps. For example, `config/apps/maps/appearance/dark_theme.yaml`.
+You can see the specific variables for each defined in the individual apps.
+For example, `config/apps/theme/dark.yaml` for the shared design tokens,
+`config/apps/start_page/layout/broken_logos.yaml` for a per-app structure
+variant, and `config/apps/maps/default.yaml` for behaviour (map zoom, tile
+layer, route planning) that is neither.
+
+Optional: to save screenshots of all apps with a specific variation for testing, we offer `tests/save_screenshots.py --variation default --output-dir outputs/2026-04-13/default/` to make this easy.
+
+## Exposing OpenApps as an MCP server
+
+If you want an agent to interact with OpenApps using [MCP](https://modelcontextprotocol.io/docs/getting-started/intro) please see `src/mcp/README.md`.
 
 ## Launch Agent
 
@@ -192,16 +246,52 @@ parallel_tasks:
   app_variations:
     - ["apps/start_page/content=default", "apps/calendar/content=german"]
     - [
-        "apps/start_page/appearance=dark_theme",
-        "apps/calendar/appearance=dark_theme",
+        "apps/theme=dark",
       ]
 ```
 
 You can modify the set of tasks or app variation by updating the `config_parallel_tasks.yaml`. We ensure:
 
-* Each deployment of OpenApps can have different appearance and content per app.
+* Each deployment of OpenApps can have a different theme (global), plus layout and content per app.
 * Each task is launched in an isolated environment for reproducible results.
 
+To run **every** task in the loaded tasks config (rather than listing a subset by
+hand), set `task_names` to `all`. This expands to all task names defined in the
+selected `tasks=` group, so it composes with any tasks file:
+
+```
+uv run launch_parallel_agents.py \
+  mode=slurm_cluster agent=dummy tasks=longer_horizon \
+  parallel_tasks.task_names=all use_wandb=True
+```
+
+Passing an explicit list (e.g. `parallel_tasks.task_names=[task_a,task_b]`) still
+runs only that subset.
+
+You can also select a task group to run via `tasks=longer_horizon parallel_tasks.task_names=all`.
+
+### Running across goal variations
+
+Every task ships with **goal variations** — the same task with the goal reworded
+in a different style. Styles are `casual`, `formal`, and `unrelated_context`
+(the instruction wrapped in unrelated chit-chat), with 9 variations per task.
+They live in `config/tasks/user_goal_variations.yaml`, keyed
+`<original_task>__<style>_<n>` (e.g. `add_meeting_with_dennis__formal_1`), and
+each one preserves the original task's reward — only the `goal` wording differs
+and a `goal_style` field records the style.
+
+To run agents across **all** tasks and their goal variations in parallel, use
+the dedicated config, which lists every task name swept over a single default
+app variation:
+
+```
+uv run launch_parallel_agents.py \
+  --config-name=config_parallel_tasks_across_goal_variations mode=slurm_cluster
+```
+
+Use `mode=local` to run the jobs sequentially in the current process instead of
+on SLURM. This expands to one isolated job per goal phrasing, letting you
+measure how robust an agent is to how the same task is worded.
 
 ## Testing
 
