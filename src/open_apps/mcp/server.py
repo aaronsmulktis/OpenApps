@@ -86,14 +86,23 @@ async def reset(seed: int | None = None):
 
 @mcp.tool()
 async def reconfigure(
-    appearance: str | None = None,
+    theme: str | None = None,
+    layout: str | None = None,
     content: str | None = None,
     seed: int | None = None,
     extras: dict | None = None,
 ) -> str:
-    """Swap appearance/content variant and seed (live) and re-seed app state."""
+    """Swap theme/layout/content variant and seed (live) and re-seed app state.
+
+    `theme` is the shared design-token theme and applies to every app;
+    `layout` and `content` are per-app.
+    """
     await _require().reconfigure(
-        appearance=appearance, content=content, seed=seed, extras=extras
+        theme=theme,
+        layout=layout,
+        content=content,
+        seed=seed,
+        extras=extras,
     )
     return "reconfigured"
 
@@ -190,7 +199,7 @@ async def list_apps() -> list[str]:
 
 @mcp.tool()
 async def list_variants(app: str, group: str) -> list[str]:
-    """Variant stems for an app's ``appearance`` or ``content`` group."""
+    """Variant stems for a group: ``theme`` (shared), ``layout`` or ``content``."""
     return _list_variants(app, group)
 
 

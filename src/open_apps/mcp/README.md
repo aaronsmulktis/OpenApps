@@ -45,9 +45,9 @@ the server is then ready for tool calls.
 | `load_task(key)` | Bind a task for scoring; returns its goal. Call `reset` after. |
 | `get_reward()` | Reward for the bound task (1.0 if complete, else 0.0). |
 | `set_goal(goal)` | Free-form goal, no automatic scoring. |
-| `reconfigure(appearance, content, seed, extras)` | Live variant/seed change. |
+| `reconfigure(theme, layout, content, seed, extras)` | Live variant/seed change. `theme` is the shared global design-token theme; `layout` and `content` are per-app. |
 | `list_apps()` | App keys actually registered (Java-aware). |
-| `list_variants(app, group)` | Variant stems for `appearance`/`content`. |
+| `list_variants(app, group)` | Variant stems for a group (`theme`/`layout`/`content`). |
 | `app_url(app=None)` | Absolute URL of an app's landing page. |
 
 **Actions** are BrowserGym action strings (full-resolution pixels):
