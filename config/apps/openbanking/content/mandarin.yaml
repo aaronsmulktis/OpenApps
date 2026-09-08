@@ -39,6 +39,7 @@ showing_options:
 search_placeholder: "搜索交易"
 search_label: "搜索"
 see_more_label: "查看更多活动"
+see_less_label: "收起活动"
 pending_label: "待处理"
 no_results_label: "没有符合搜索条件的交易。"
 column_labels:
@@ -78,6 +79,23 @@ accounts:
         type: "银行卡"
         amount: -1078.81
         balance: 793.49
+      # Behind "查看更多活动". Amounts and balances match `default` exactly --
+      # only the wording is translated.
+      - date: "2026年8月23日"
+        description: "发起方名称:PAYROLL PARTNERS 发起方ID:456 记账日期:260822 摘要:工资发放 SEC:CCD 追踪号:456 EED:260823 个人ID: 个人名称:ACMEIND 交易号: 456DEF"
+        type: "ACH 出账"
+        amount: -1500.00
+        balance: 1872.30
+      - date: "2026年8月22日"
+        description: "远程支票存入 批次 00187 笔数 003 处理时间 08/22 09:41:12 CT"
+        type: "存款"
+        amount: 2450.00
+        balance: 3372.30
+      - date: "2026年8月20日"
+        description: "44号印刷店 PRINTSHOP44.COM TX 08/19 (...5432)"
+        type: "银行卡"
+        amount: -64.20
+        balance: 922.30
 
   - name: "BUS SELECT SAVINGS (...8891)"
     kind: deposit
@@ -103,6 +121,21 @@ accounts:
         type: "转账"
         amount: 3500.00
         balance: 22292.13
+      - date: "2026年7月1日"
+        description: "利息入账"
+        type: "利息"
+        amount: 15.88
+        balance: 18792.13
+      - date: "2026年6月18日"
+        description: "转出至支票账户 ...5555"
+        type: "转账"
+        amount: -1200.00
+        balance: 18776.25
+      - date: "2026年6月1日"
+        description: "从支票账户 ...5555 转入"
+        type: "转账"
+        amount: 2500.00
+        balance: 19976.25
 
   # The two date strings are translated, like the transaction dates; the
   # payment-due task scores on a calendar event rather than on the string.
@@ -137,3 +170,20 @@ accounts:
         type: "还款"
         amount: 900.00
         balance: -659.75
+      # None of these is type 银行卡: the card-charges task states the account
+      # has exactly two, and that has to stay true in every language.
+      - date: "2026年8月12日"
+        description: "年费"
+        type: "手续费"
+        amount: -95.00
+        balance: -1559.75
+      - date: "2026年8月8日"
+        description: "消费利息"
+        type: "利息"
+        amount: -18.32
+        balance: -1464.75
+      - date: "2026年8月5日"
+        description: "退货入账 FLEET UNIFORM SUPPLY (...2043)"
+        type: "退款"
+        amount: 146.55
+        balance: -1446.43

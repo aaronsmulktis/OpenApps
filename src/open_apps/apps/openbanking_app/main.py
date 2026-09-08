@@ -21,9 +21,10 @@ from fasthtml.common import *
 from dataclasses import dataclass
 import json
 from typing import List, Optional
+from urllib.parse import urlencode
 from src.open_apps.apps.start_page.helper import create_logo_header
 from src.open_apps.frontend import local_hdrs
-from src.open_apps.theme import theme_style
+from src.open_apps.theme import theme_asset, theme_style
 
 
 @dataclass
@@ -98,6 +99,60 @@ styles = Style("""
     a { color: var(--color-link, var(--color-accent)); text-decoration: none; }
     a:hover { text-decoration: underline; }
 
+    /* --- Pico bridge ----------------------------------------------------
+       Pico keeps its own palette in `--pico-*` properties and applies it
+       through rules this app never overrides: `td`/`th` paint a cell
+       background, `input`/`select` paint a field, `h1`-`h6` take a fixed
+       heading colour, and `[role=button].contrast` paints a button. A token
+       block cannot reach any of them -- those are real declarations, not
+       fallbacks -- so under a dark theme the page came out with a white
+       ledger, white filter controls and near-black headings.
+
+       Two halves fix it. `page()` sets `data-theme` on the wrapper from the
+       theme's `tone` asset, which flips Pico to the palette of the right
+       polarity including the parts no variable reaches (the select chevron
+       and the search field's clear affordance are `data:` SVGs baked per
+       palette, and `color-scheme` is what makes the native dropdown render
+       dark). Then the block below re-points the handful of Pico properties
+       this app's markup actually touches at our own tokens, so the result is
+       the bank's palette rather than Pico's blue-grey one.
+
+       Scoped to `.ob-root`, not `:root`: these pages are mounted alongside
+       every other app's, and Pico's defaults are the right answer everywhere
+       else. Specificity ties with Pico's own `[data-theme=...]` selector and
+       wins on source order, since this stylesheet follows the vendored one. */
+    .ob-root {
+        --pico-background-color: var(--color-bg);
+        --pico-color: var(--color-fg);
+        --pico-muted-color: var(--color-muted);
+        --pico-muted-border-color: var(--color-border);
+        --pico-h1-color: var(--color-fg);
+        --pico-h2-color: var(--color-fg);
+        --pico-h3-color: var(--color-fg);
+        --pico-h4-color: var(--color-fg);
+        --pico-h5-color: var(--color-fg);
+        --pico-h6-color: var(--color-fg);
+        --pico-primary: var(--color-primary);
+        --pico-primary-background: var(--color-primary);
+        --pico-primary-border: var(--color-primary);
+        --pico-primary-hover-background: var(--color-primary-hover);
+        --pico-primary-inverse: var(--color-on-primary);
+        /* `.contrast` is what the "Return to List of Apps" button uses. Pico
+           reads it as "the far end of the page's own range", which is exactly
+           the fg/bg pair. */
+        --pico-contrast-background: var(--color-fg);
+        --pico-contrast-border: var(--color-fg);
+        --pico-contrast-inverse: var(--color-bg);
+        --pico-table-border-color: var(--color-border);
+        --pico-form-element-background-color: var(--color-bg);
+        --pico-form-element-active-background-color: var(--color-bg);
+        --pico-form-element-border-color: var(--color-border);
+        --pico-form-element-active-border-color: var(--color-primary);
+        --pico-form-element-color: var(--color-fg);
+        --pico-form-element-placeholder-color: var(--color-muted);
+        --pico-form-element-focus-color: var(--color-primary);
+    }
+
     .ob-masthead {
         display: flex;
         align-items: center;
@@ -114,6 +169,15 @@ styles = Style("""
         margin-bottom: 0 !important;
         color: var(--color-header-fg, var(--color-on-primary)) !important;
     }
+    /* The wordmark is an `H1` inside that container, and Pico colours every
+       heading explicitly, so it does not inherit the masthead foreground --
+       it was rendering in body-text colour on the navy bar. It sits on the
+       header background, not the page background, so it takes the header
+       token rather than `--color-fg` like the headings in the bridge above. */
+    .ob-masthead h1 {
+        color: var(--color-header-fg, var(--color-on-primary));
+        margin-bottom: 0;
+    }
     .ob-masthead-spacer { flex: 1 1 auto; }
     .ob-menu-icon {
         font-size: 1.5rem;
@@ -129,12 +193,16 @@ styles = Style("""
         padding: 0.25rem;
         cursor: pointer;
     }
+    /* Fill and text are the masthead's own pair, inverted -- not `--color-bg`
+       over `--color-header-bg`, which happens to read as white-on-navy in the
+       light theme purely because the page is white there, and collapses to
+       near-black on near-black under a dark one. */
     .ob-ghost-btn {
         border: 1px solid var(--color-header-fg, var(--color-on-primary));
         border-radius: var(--radius);
         padding: 0.4rem 0.9rem;
         font-weight: 600;
-        background-color: var(--color-bg);
+        background-color: var(--color-header-fg, var(--color-on-primary));
         color: var(--color-header-bg, var(--color-primary));
     }
     .ob-signout { color: var(--color-header-fg, var(--color-on-primary)); }
@@ -397,6 +465,17 @@ def openbanking_theme():
     return theme_style(app.config, "openbanking")
 
 
+def pico_theme() -> str:
+    """Pico's palette polarity for the active theme: ``"dark"`` or ``"light"``.
+
+    Read per-request for the same reason as the token block. Only ``dark`` is
+    matched explicitly -- ``mono`` and any tone a future theme invents are
+    light-on-paper, and Pico has no third palette to offer them.
+    """
+    tone = theme_asset(app.config, "openbanking", "tone", "light")
+    return "dark" if str(tone) == "dark" else "light"
+
+
 def cfg():
     """The app's own config node."""
     return app.config.openbanking
@@ -407,6 +486,19 @@ def current_layout():
     if config is None:
         return "default"
     return getattr(config.openbanking, "layout", "default")
+
+
+def visible_transaction_count() -> int:
+    """How many ledger rows show before "See more activity"; ``0`` = all.
+
+    A `layout` knob rather than a content one: it changes how much of the same
+    ledger is on screen at once, which is structure, not wording. Defaulted
+    here as well so a config that predates the key still renders.
+    """
+    config = getattr(app, "config", None)
+    if config is None:
+        return 4
+    return int(getattr(config.openbanking, "visible_transactions", 4))
 
 
 def mask_number(value: str, visible: int = 4) -> str:
@@ -767,10 +859,53 @@ def txn_cards(txns: List[Transaction]):
     return Div(*cards)
 
 
-def ledger(account: Account, showing_index: int, query: str):
-    """The swappable part of the transactions panel."""
+def see_more_toggle(account: Account, showing_index: int, query: str, expanded: bool):
+    """The "See more activity" / "See less" control under a truncated ledger.
+
+    Same disclosure contract as the account-number figures: the open/closed
+    state lives in the query string and nothing is written back, so expanding
+    the ledger leaves ``/openbanking_all`` byte-identical.
+
+    A real ``href`` as well as the htmx swap, because this one is worth
+    deep-linking and has to keep working without htmx -- the account page
+    reads the same ``expand`` flag the partial does.
+    """
     c = cfg()
-    txns = filter_txns(txns_for(account.id), showing_index, query)
+    flag = int(not expanded)
+    params = urlencode({"showing": showing_index, "q": query, "expand": flag})
+    return A(
+        c.see_less_label if expanded else c.see_more_label,
+        href=f"/openbanking/accounts/{account.id}?{params}",
+        cls="ob-see-more",
+        aria_expanded="true" if expanded else "false",
+        hx_get=f"/openbanking/accounts/{account.id}/ledger?expand={flag}",
+        # The live filter and search box rather than the values baked into the
+        # href, so expanding after typing keeps what was typed.
+        hx_include="#showing, #ob-search",
+        hx_target="#ob-ledger",
+        hx_swap="outerHTML",
+        hx_push_url="true",
+    )
+
+
+def ledger(account: Account, showing_index: int, query: str, expanded: bool = False):
+    """The swappable part of the transactions panel.
+
+    Shows the newest :func:`visible_transaction_count` postings and hides the
+    rest behind the toggle, which is what a real statement view does -- and
+    what makes "find the largest charge" a task about navigating the ledger
+    rather than about reading one screenshot.
+
+    Changing the filter or the search term re-runs the query collapsed: the
+    two controls do not carry the flag, so a new result set starts at its
+    first page. Only the toggle sets it.
+    """
+    c = cfg()
+    matches = filter_txns(txns_for(account.id), showing_index, query)
+    limit = visible_transaction_count()
+    truncatable = 0 < limit < len(matches)
+    txns = matches if expanded or not truncatable else matches[:limit]
+
     if not txns:
         body = Div(c.no_results_label, cls="ob-empty")
     elif current_layout() == "card_list":
@@ -779,16 +914,16 @@ def ledger(account: Account, showing_index: int, query: str):
         body = txn_table(txns)
     return Div(
         body,
-        A(
-            c.see_more_label,
-            href=f"/openbanking/accounts/{account.id}",
-            cls="ob-see-more",
-        ),
+        see_more_toggle(account, showing_index, query, expanded)
+        if truncatable
+        else None,
         id="ob-ledger",
     )
 
 
-def transactions_panel(account: Account, showing_index: int, query: str):
+def transactions_panel(
+    account: Account, showing_index: int, query: str, expanded: bool = False
+):
     c = cfg()
     target = f"/openbanking/accounts/{account.id}/ledger"
     options = [
@@ -825,13 +960,24 @@ def transactions_panel(account: Account, showing_index: int, query: str):
     )
     return Div(
         H2(c.transactions_heading, cls="ob-band-heading"),
-        Div(controls, ledger(account, showing_index, query), cls="ob-card"),
+        Div(
+            controls,
+            ledger(account, showing_index, query, expanded),
+            cls="ob-card",
+        ),
         cls="ob-band",
     )
 
 
 def page(*content):
-    return Div(openbanking_theme(), styles, masthead(), *content)
+    return Div(
+        openbanking_theme(),
+        styles,
+        masthead(),
+        *content,
+        cls="ob-root",
+        data_theme=pico_theme(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -895,14 +1041,19 @@ def openbanking_index():
 
 @rt("/openbanking/accounts/{account_id}")
 def openbanking_account_detail(
-    account_id: int, showing: int = 0, q: str = "", account: int = 0, routing: int = 0
+    account_id: int,
+    showing: int = 0,
+    q: str = "",
+    account: int = 0,
+    routing: int = 0,
+    expand: int = 0,
 ):
     acct = get_account(account_id)
     if acct is None:
         return page(Div(cfg().no_results_label, cls="ob-page"))
     return page(
         account_summary(acct, bool(account), bool(routing)),
-        transactions_panel(acct, showing, q),
+        transactions_panel(acct, showing, q, bool(expand)),
         Div(
             A(cfg().back_to_accounts_label, href="/openbanking"),
             " · ",
@@ -913,12 +1064,14 @@ def openbanking_account_detail(
 
 
 @rt("/openbanking/accounts/{account_id}/ledger")
-def openbanking_account_ledger(account_id: int, showing: int = 0, q: str = ""):
+def openbanking_account_ledger(
+    account_id: int, showing: int = 0, q: str = "", expand: int = 0
+):
     """htmx partial: the filtered/searched ledger only."""
     account = get_account(account_id)
     if account is None:
         return Div(cfg().no_results_label, cls="ob-empty", id="ob-ledger")
-    return ledger(account, showing, q)
+    return ledger(account, showing, q, bool(expand))
 
 
 @rt("/openbanking/accounts/{account_id}/numbers")

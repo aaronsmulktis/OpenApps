@@ -41,6 +41,7 @@ showing_options:
 search_placeholder: "Umsätze durchsuchen"
 search_label: "Suchen"
 see_more_label: "Weitere Aktivitäten anzeigen"
+see_less_label: "Weniger Aktivitäten anzeigen"
 pending_label: "Ausstehend"
 no_results_label: "Keine Umsätze entsprechen Ihrer Suche."
 column_labels:
@@ -80,6 +81,23 @@ accounts:
         type: "Karte"
         amount: -1078.81
         balance: 793.49
+      # Behind "Weitere Aktivitäten anzeigen". Amounts and balances match
+      # `default` exactly -- only the wording is translated.
+      - date: "23. Aug. 2026"
+        description: "AUFTRAGGEBER:PAYROLL PARTNERS AUFTRAGS-ID:456 BUCHUNGSDATUM:260822 VERWENDUNGSZWECK:GEHALTSLAUF SEC:CCD BELEG#:456 EED:260823 IND ID: IND NAME:ACMEIND TRN: 456DEF"
+        type: "SEPA-Lastschrift"
+        amount: -1500.00
+        balance: 1872.30
+      - date: "22. Aug. 2026"
+        description: "EINZAHLUNG BELEGERFASSUNG STAPEL 00187 POSTEN 003 VERARBEITET 22.08. 09:41:12 CT"
+        type: "Einzahlung"
+        amount: 2450.00
+        balance: 3372.30
+      - date: "20. Aug. 2026"
+        description: "DRUCKEREI 44 PRINTSHOP44.COM TX 19.08. (...5432)"
+        type: "Karte"
+        amount: -64.20
+        balance: 922.30
 
   - name: "BUS SELECT SAVINGS (...8891)"
     kind: deposit
@@ -105,6 +123,21 @@ accounts:
         type: "Überweisung"
         amount: 3500.00
         balance: 22292.13
+      - date: "01. Juli 2026"
+        description: "ZINSGUTSCHRIFT"
+        type: "Zinsen"
+        amount: 15.88
+        balance: 18792.13
+      - date: "18. Juni 2026"
+        description: "ÜBERTRAG AUF GIROKONTO ...5555"
+        type: "Überweisung"
+        amount: -1200.00
+        balance: 18776.25
+      - date: "01. Juni 2026"
+        description: "ÜBERTRAG VOM GIROKONTO ...5555"
+        type: "Überweisung"
+        amount: 2500.00
+        balance: 19976.25
 
   # The two date strings *are* translated, like the transaction dates. The
   # payment-due task therefore scores on a calendar event (a real date), not on
@@ -140,3 +173,20 @@ accounts:
         type: "Zahlung"
         amount: 900.00
         balance: -659.75
+      # None of these is type `Karte`: the card-charges task states the account
+      # has exactly two, and that has to stay true in every language.
+      - date: "12. Aug. 2026"
+        description: "JAHRESGEBÜHR"
+        type: "Gebühr"
+        amount: -95.00
+        balance: -1559.75
+      - date: "08. Aug. 2026"
+        description: "SOLLZINSEN AUF UMSÄTZE"
+        type: "Zinsen"
+        amount: -18.32
+        balance: -1464.75
+      - date: "05. Aug. 2026"
+        description: "GUTSCHRIFT RETOURE FLEET UNIFORM SUPPLY (...2043)"
+        type: "Gutschrift"
+        amount: 146.55
+        balance: -1446.43
