@@ -486,7 +486,7 @@ def index():
     file_tree = get_file_tree(files_root)
     editor_options = f"""{{
                         mode: '{app.config.code_editor.mode}',
-                        theme: '{app.config.code_editor.theme}',
+                        theme: '{current_editor_theme()}',
                         lineNumbers: true,
                         indentUnit: 4,
                         tabSize: 4,
@@ -606,7 +606,7 @@ def get_folder(folder: str):
     side_bar = create_sidebar(folder)
     editor_options = f"""{{
                         mode: '{app.config.code_editor.mode}',
-                        theme: '{app.config.code_editor.theme}',
+                        theme: '{current_editor_theme()}',
                         lineNumbers: true,
                         readOnly: true
                     }}"""
@@ -710,7 +710,7 @@ def get_file(file: str):
     file_tree = get_file_tree(files_root)
     editor_options = f"""{{
                         mode: '{app.config.code_editor.mode}',
-                        theme: '{app.config.code_editor.theme}',
+                        theme: '{current_editor_theme()}',
                         lineNumbers: true,
                         indentUnit: 4,
                         tabSize: 4,

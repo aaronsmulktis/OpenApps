@@ -87,6 +87,47 @@ class TestEditorBinding:
             assert "setOption" in script
 
 
+class TestEditorOptions:
+    """The CodeMirror options must name a stylesheet that is on the page.
+
+    Regression coverage for the themes/layouts merge, which kept the extracted
+    ``editor_options`` string but dropped the ``current_editor_theme()`` call
+    it had been rewritten to use, leaving ``theme: '{app.config.code_editor
+    .theme}'``. That field is now the *shared* design-token theme and defaults
+    to null, so every view initialised CodeMirror with ``theme: 'None'`` -- an
+    unstyled editor, and no error anywhere.
+    """
+
+    @pytest.fixture
+    def highlighting(self, client, monkeypatch):
+        monkeypatch.setattr(
+            codeeditor_main.app.config.code_editor, "highlight", True, raising=False
+        )
+        return client
+
+    def theme_options(self, html: str) -> list:
+        return re.findall(r"\n\s*theme: '([^']*)'", html)
+
+    @pytest.mark.parametrize(
+        "url", ["/codeeditor/", "/codeeditor/script.py", "/codeeditor/developing"]
+    )
+    def test_view_requests_the_active_editor_theme(self, highlighting, url):
+        emitted = self.theme_options(highlighting.get(url).text)
+        assert emitted == [codeeditor_main.current_editor_theme()], url
+        assert "None" not in emitted, url
+
+    def test_theme_is_one_the_page_loaded_a_stylesheet_for(self, highlighting):
+        cfg = codeeditor_main.app.config.code_editor
+        available = {
+            *cfg.list_of_themes,
+            *codeeditor_main._as_dict(
+                getattr(cfg, "editor_theme_by_tone", None)
+            ).values(),
+            cfg.editor_theme,
+        }
+        assert codeeditor_main.current_editor_theme() in available
+
+
 class TestSaveRoundTrip:
     """A save must land on disk and be visible to the reward endpoint."""
 
