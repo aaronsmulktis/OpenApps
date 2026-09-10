@@ -35,6 +35,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+import apsw
 import pytest
 from hydra import compose, initialize
 from hydra.utils import instantiate
@@ -320,6 +321,98 @@ class TestRendering:
         html = client.get("/openbanking/accounts/0").text
         assert table_markup in html
         assert card_markup not in html
+
+
+class TestBalancesComeFromSqlite:
+    """Every figure on screen is read out of SQLite, not out of the Hydra config.
+
+    The config is only a *seed*: ``set_environment`` inserts it once and the
+    render path goes through the ``account`` / ``transaction`` tables from then
+    on. That distinction is invisible while the two agree, which is exactly why
+    it needs a test -- a refactor that closes over ``config.openbanking.accounts``
+    at import time would still pass every other test in this file, and would then
+    silently ignore any mutation an agent or a task setup made to the database.
+
+    Each test writes through a *separate* connection to the same file and asserts
+    the change shows up in the very next request, which also pins that nothing is
+    cached in module state between requests.
+
+    The separate connection is `apsw`, not the stdlib `sqlite3` module, and that
+    is not incidental. fastlite talks to SQLite through apsw, which links its own
+    copy of the SQLite library; `sqlite3` links the system one. Two SQLite builds
+    in one process, both holding a WAL database open, do not share the WAL index
+    coherently -- the apsw side silently keeps serving a stale snapshot, so a test
+    written with `sqlite3` fails on its *second* write and looks exactly like the
+    caching bug this class exists to catch. Out-of-process writers (the `sqlite3`
+    CLI, a GUI client) are fine; see `docs/inspecting_databases.md`.
+    """
+
+    def _db(self):
+        return apsw.Connection(app.config.openbanking.database_path)
+
+    @contextlib.contextmanager
+    def _patched(self, table: str, column: str, where: str, value: float):
+        """Set one column to `value` for the duration of the block, then put back
+        whatever was there before.
+
+        The old value is *read back* rather than restated as a literal. The
+        `client` fixture is module-scoped, so a restore that misses by a cent
+        leaves the seed corrupted for every later test in the file -- and the
+        failure surfaces somewhere else entirely, in whichever test happens to
+        assert on the figure that got clobbered.
+
+        `list(...)` wraps every statement because apsw cursors are lazy: an
+        undrained one leaves the statement live on the connection.
+        """
+        con = self._db()
+        select = f'SELECT {column} FROM "{table}" WHERE {where}'
+        try:
+            ((old,),) = list(con.execute(select))
+            list(con.execute(f'UPDATE "{table}" SET {column} = ? WHERE {where}', (value,)))
+            yield
+        finally:
+            list(con.execute(f'UPDATE "{table}" SET {column} = ? WHERE {where}', (old,)))
+            con.close()
+
+    def test_database_file_exists_and_is_seeded(self, client):
+        con = self._db()
+        try:
+            names = {r[0] for r in con.execute("SELECT name FROM account")}
+            ((txn_count,),) = list(con.execute('SELECT COUNT(*) FROM "transaction"'))
+        finally:
+            con.close()
+        assert set(SEEDED_ACCOUNTS) <= names
+        assert txn_count > 0
+
+    def test_available_balance_is_read_from_the_account_table(self, client):
+        assert "$6,102.80" in client.get("/openbanking/accounts/0").text
+        with self._patched("account", "available_balance", "id = 0", 12345.67):
+            assert "$12,345.67" in client.get("/openbanking/accounts/0").text
+        # The restore has to land too, or the rest of the file scores against a
+        # ledger that no longer matches the seed.
+        assert "$6,102.80" in client.get("/openbanking/accounts/0").text
+
+    def test_index_balances_are_read_from_the_account_table(self, client):
+        """The account list is a second render path over the same rows."""
+        with self._patched("account", "available_balance", "id = 0", 12345.67):
+            assert "$12,345.67" in client.get("/openbanking").text
+
+    def test_card_statement_balance_is_read_from_the_account_table(self, client):
+        """Cards render `statement_balance`/`present_balance`, not `available_balance`."""
+        with self._patched("account", "statement_balance", "id = 2", 9876.54):
+            assert "$9,876.54" in client.get("/openbanking/accounts/2").text
+
+    def test_ledger_balances_are_read_from_the_transaction_table(self, client):
+        where = "account_id = 0 AND position = 1"
+        with self._patched("transaction", "balance", where, 4242.42):
+            assert "$4,242.42" in client.get("/openbanking/accounts/0").text
+
+    def test_reward_state_is_read_from_the_account_table(self, client):
+        """`/openbanking_all` feeds task scoring, so it must see the DB too."""
+        with self._patched("account", "available_balance", "id = 0", 12345.67):
+            state = client.get("/openbanking_all").json()
+        balances = {a["id"]: a["available_balance"] for a in state["accounts"]}
+        assert balances[0] == 12345.67
 
 
 class TestCreditCardSummary:
