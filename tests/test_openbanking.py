@@ -30,7 +30,9 @@ import copy
 import io
 import json
 import re
-from datetime import datetime
+import shutil
+import sys
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -195,7 +197,8 @@ class TestContentInvariants:
             assert other[name] == base[name], f"{variant} changed figures on {name!r}"
 
     @pytest.mark.parametrize(
-        "variant", ["long_descriptions", "misleading_descriptions", "adversarial_descriptions"]
+        "variant",
+        ["long_descriptions", "misleading_descriptions", "adversarial_descriptions"],
     )
     def test_noise_variants_append_rather_than_replace(self, tmp_path, variant):
         cfg = _compose(tmp_path, [f"apps/openbanking/content={variant}"])
@@ -268,8 +271,8 @@ class TestRendering:
 
     def test_account_detail_shows_the_summary_figures(self, client):
         html = client.get("/openbanking/accounts/0").text
-        assert "$6,102.80" in html          # available balance
-        assert "-$1,078.81" in html         # largest card charge, signed
+        assert "$6,102.80" in html  # available balance
+        assert "-$1,078.81" in html  # largest card charge, signed
         assert "COOL APPS INC" in html
         assert "Available balance" in html
 
@@ -368,11 +371,11 @@ class TestCreditCardSummary:
             "Credit limit",
         ):
             assert label in html, label
-        assert "$872.19" in html      # statement balance
-        assert "$35.00" in html       # minimum payment
+        assert "$872.19" in html  # statement balance
+        assert "$35.00" in html  # minimum payment
         assert "Sep 15, 2026" in html  # due date
-        assert "$8,715.81" in html    # available to spend
-        assert "$10,000.00" in html   # credit limit
+        assert "$8,715.81" in html  # available to spend
+        assert "$10,000.00" in html  # credit limit
 
     def test_amount_owed_is_shown_unsigned(self, client):
         """`present_balance` is -1284.19; a cardholder owes 1,284.19.
@@ -402,9 +405,9 @@ class TestCreditCardSummary:
             abs(card["present_balance"]) + card["available_credit"]
         )
         # The one charge posted after the statement closed.
-        assert abs(card["present_balance"]) - card["statement_balance"] == pytest.approx(
-            412.00
-        )
+        assert abs(card["present_balance"]) - card[
+            "statement_balance"
+        ] == pytest.approx(412.00)
 
     def test_card_number_is_not_a_plausible_live_pan(self, client):
         """Two safeguards: an unassigned network prefix, and a failing Luhn."""
@@ -511,9 +514,67 @@ class TestAccountNumbers:
 
     def test_revealing_does_not_mutate_state(self, client):
         before = client.get("/openbanking_all").json()
-        for query in ["account=1&routing=0", "account=0&routing=1", "account=1&routing=1"]:
+        for query in [
+            "account=1&routing=0",
+            "account=0&routing=1",
+            "account=1&routing=1",
+        ]:
             assert client.get(f"{self.NUMBERS}?{query}").status_code == 200
         assert client.get("/openbanking_all").json() == before
+
+
+class TestMasthead:
+    """The bar carries no control that swallows a click.
+
+    Inert chrome is worse than absent chrome for an agent: a hamburger or a
+    magnifier that does nothing costs a step and teaches nothing, so the bar
+    holds the wordmark and the one CTA that has an answer.
+    """
+
+    OPEN_ACCOUNT = "/openbanking/open-account"
+
+    @pytest.mark.parametrize("glyph", ["☰", "⌕", "◉"])
+    def test_the_inert_glyphs_are_gone(self, client, glyph):
+        assert glyph not in client.get("/openbanking").text
+
+    def test_the_dead_sign_out_caption_is_gone(self, client):
+        html = client.get("/openbanking").text
+        assert "Sign out" not in html
+        assert "ob-signout" not in html
+
+    @pytest.mark.parametrize(
+        "route", ["/openbanking", "/openbanking/accounts/0", "/openbanking/accounts/2"]
+    )
+    def test_the_cta_and_its_swap_target_are_on_every_page(self, client, route):
+        """The CTA sits in the bar on every page, so the placeholder it swaps
+        has to exist on every page too."""
+        html = client.get(route).text
+        assert "Open an account" in html
+        assert 'id="ob-dialog"' in html
+
+    def test_the_cta_opens_the_dialog(self, client):
+        html = client.get(self.OPEN_ACCOUNT).text
+        assert "<dialog" in html
+        assert "open" in html
+        assert "1-800-555-5555" in html
+        assert "Open a new account" in html
+
+    def test_the_dialog_is_absent_until_asked_for(self, client):
+        assert "<dialog" not in client.get("/openbanking").text
+
+    def test_the_dialog_can_be_dismissed(self, client):
+        """Close swaps back to the empty placeholder, so it is the same route
+        rather than a second endpoint."""
+        html = client.get(f"{self.OPEN_ACCOUNT}?show=0").text
+        assert "<dialog" not in html
+        assert 'id="ob-dialog"' in html
+
+    @pytest.mark.parametrize("variant", ["german", "mandarin"])
+    def test_the_phone_number_is_the_same_in_every_language(self, tmp_path, variant):
+        """It is a figure, like the amounts: a task that reads it must not need
+        a different answer per content variant."""
+        cfg = _compose(tmp_path, [f"apps/openbanking/content={variant}"])
+        assert cfg.apps.openbanking.open_account_phone == "1-800-555-5555"
 
 
 class TestAccountIdentity:
@@ -570,7 +631,7 @@ class TestFiltering:
 
     def test_deposits_only(self, client):
         html = client.get(f"{self.LEDGER}?showing=1&q=").text
-        assert "VENMO" in html          # +632.67
+        assert "VENMO" in html  # +632.67
         assert "COOL APPS" not in html  # -1078.81
 
     def test_withdrawals_only(self, client):
@@ -764,6 +825,7 @@ class TestRewardState:
             "/openbanking/accounts/2",
             "/openbanking/accounts/0?showing=2",
             "/openbanking/accounts/0/ledger?showing=1&q=venmo",
+            "/openbanking/open-account",
         ]:
             assert client.get(route).status_code == 200
         assert client.get("/openbanking_all").json() == before
@@ -864,22 +926,26 @@ class TestTaskAnswersMatchTheSeed:
     def test_exactly_one_pending_transaction_and_its_amount(self, accounts):
         checking = accounts["BUS COMPLETE CHK (...5555)"]
         pending = [t for t in checking.transactions if t.date is None]
-        assert len(pending) == 1, "the goal says 'one transaction that is still pending'"
-        expected = self._expected(
-            "note_pending_transfer_in_calendar_and_todo", index=1
+        assert len(pending) == 1, (
+            "the goal says 'one transaction that is still pending'"
         )
+        expected = self._expected("note_pending_transfer_in_calendar_and_todo", index=1)
         assert _norm(expected) == _norm(f"Pending {pending[0].amount:.2f}")
 
     def test_highest_available_balance_account(self, accounts):
         richest = max(accounts.values(), key=lambda a: a.available_balance)
-        message = self._expected("reconcile_the_largest_account", field="message", index=0)
+        message = self._expected(
+            "reconcile_the_largest_account", field="message", index=0
+        )
         todo = self._expected("reconcile_the_largest_account", index=1)
         assert _norm(message) == _norm(richest.name)
         assert _norm(todo) == _norm(f"Reconcile {richest.name}")
 
     def test_the_richest_account_is_unambiguous(self, accounts):
         """A tie would make the task unscoreable."""
-        balances = sorted((a.available_balance for a in accounts.values()), reverse=True)
+        balances = sorted(
+            (a.available_balance for a in accounts.values()), reverse=True
+        )
         assert balances[0] > balances[1]
 
     # --- Credit card ------------------------------------------------------
@@ -896,18 +962,16 @@ class TestTaskAnswersMatchTheSeed:
         message = self._expected(
             "report_the_card_statement_balance_and_headroom", field="message", index=0
         )
-        todo = self._expected(
-            "report_the_card_statement_balance_and_headroom", index=1
-        )
+        todo = self._expected("report_the_card_statement_balance_and_headroom", index=1)
         assert _norm(message) == _norm(f"{card.statement_balance:.2f}")
         assert _norm(todo) == _norm(f"Headroom {card.available_credit:.2f}")
 
     def test_card_payment_due_date_matches_the_seed(self, card):
         """The goal is scored as a calendar date, so the seeded *string* and the
         task's ISO date have to agree -- nothing else ties them together."""
-        date = str(self._expected(
-            "schedule_the_card_payment_due_date", field="date", index=0
-        ))
+        date = str(
+            self._expected("schedule_the_card_payment_due_date", field="date", index=0)
+        )
         parsed = datetime.strptime(card.payment_due_date, "%b %d, %Y").date()
         assert date == parsed.isoformat()
 
@@ -947,14 +1011,7 @@ class TestTransactionGenerator:
         return gen.load_accounts(gen.content_path("default"))
 
     def _rows(self, gen, account, **kwargs):
-        options = dict(
-            count=3,
-            seed=0,
-            max_amount=500.0,
-            types=None,
-            date_format=gen.DATE_FORMAT,
-            start=None,
-        )
+        options = dict(count=3, seed=0, max_amount=500.0, types=None, start=None)
         options.update(kwargs)
         return gen.generate(account, **options)
 
@@ -980,12 +1037,21 @@ class TestTransactionGenerator:
     def test_dates_run_backwards_from_the_oldest_posting(self, gen, default_accounts):
         account = gen.find_account(default_accounts, SEEDED_ACCOUNTS[0])
         oldest = gen.parse_date(account["transactions"][-1]["date"])
-        dates = [
-            datetime.strptime(row["date"], gen.DATE_FORMAT).date()
-            for row in self._rows(gen, account, count=5)
-        ]
+        dates = [row["when"] for row in self._rows(gen, account, count=5)]
         assert dates == sorted(dates, reverse=True)
         assert dates[0] < oldest
+
+    def test_a_row_with_no_readable_date_is_an_error_not_today(
+        self, gen, default_accounts
+    ):
+        """Today's date would sort a new row above the ones it belongs under,
+        and would make the same command emit different YAML tomorrow."""
+        account = dict(gen.find_account(default_accounts, SEEDED_ACCOUNTS[0]))
+        account["transactions"] = [
+            {**txn, "date": "whenever"} for txn in account["transactions"]
+        ]
+        with pytest.raises(SystemExit, match="--start-date"):
+            self._rows(gen, account)
 
     def test_amounts_stay_under_the_ceiling(self, gen, default_accounts):
         """The ceiling is how a caller keeps clear of a figure a task reads."""
@@ -1026,7 +1092,9 @@ class TestTransactionGenerator:
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
 
         account = gen.find_account(default_accounts, SEEDED_ACCOUNTS[1])
-        rows = self._rows(gen, account, count=2, seed=3)
+        rows = gen.localize(
+            self._rows(gen, account, count=2, seed=3), gen.VARIANTS["default"]
+        )
         gen.splice(target, str(account["name"]), gen.render_yaml(rows, indent=6), 2)
 
         written = gen.load_accounts(target)
@@ -1050,3 +1118,251 @@ class TestTransactionGenerator:
         with pytest.raises(ValueError):
             gen.splice(target, SEEDED_ACCOUNTS[0], '      - date: "Jan 01, 2026"\n', 3)
         assert target.read_text(encoding="utf-8") == original
+
+
+# ---------------------------------------------------------------------------
+# Fanning the generator out across the content variants
+# ---------------------------------------------------------------------------
+class TestVariantFanout:
+    """A ledger row added to one variant alone breaks every other variant.
+
+    ``german.yaml`` and ``mandarin.yaml`` restate the seeded accounts in full,
+    and ``test_seeded_account_figures_are_identical`` requires all three to
+    agree on every amount and balance -- so the generator writes them together
+    by default. What travels is the figures; the date format and the type
+    vocabulary are re-expressed per file.
+    """
+
+    TRANSLATED = ["german", "mandarin"]
+
+    @pytest.fixture(scope="class")
+    def gen(self):
+        from open_apps.apps.openbanking_app import generate_transactions
+
+        return generate_transactions
+
+    @pytest.fixture
+    def content(self, gen, tmp_path, monkeypatch):
+        """A throwaway copy of the content dir, with the generator pointed at it."""
+        target = tmp_path / "content"
+        shutil.copytree(gen.CONTENT_DIR, target)
+        monkeypatch.setattr(gen, "CONTENT_DIR", target)
+        return target
+
+    def _run(self, gen, *argv):
+        original = sys.argv
+        sys.argv = ["openbanking-gen-txns", *argv]
+        try:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    gen.main()
+        finally:
+            sys.argv = original
+        return out.getvalue(), err.getvalue()
+
+    def _figures(self, gen, path, name):
+        account = gen.find_account(gen.load_accounts(path), name)
+        return [(t["amount"], t["balance"]) for t in account["transactions"]]
+
+    # -- the translation tables ---------------------------------------------
+
+    def test_every_generated_type_can_be_translated(self, gen):
+        """A type with no entry would land in `german.yaml` in English, and the
+        card tasks count rows by type."""
+        emitted = {m.type for m in gen.DEPOSIT_MERCHANTS + gen.CARD_MERCHANTS}
+        for stem in self.TRANSLATED:
+            assert emitted <= set(gen.VARIANTS[stem].types)
+
+    @pytest.mark.parametrize("stem", ["german", "mandarin"])
+    def test_the_type_tables_match_the_seeded_vocabulary(self, gen, stem):
+        """The translations are the words these files already use, not invented
+        ones -- otherwise a generated row reads as a type the ledger never had."""
+        seeded = {
+            txn["type"]
+            for account in gen.load_accounts(gen.content_path(stem))
+            for txn in account["transactions"]
+        }
+        table = set(gen.VARIANTS[stem].types.values())
+        assert table >= seeded, f"{stem} uses types the table does not produce"
+
+    @pytest.mark.parametrize("stem", ["default", "german", "mandarin"])
+    def test_every_seeded_date_parses_under_its_own_variant(self, gen, stem):
+        """The reader is what lets a fan-out chain off the target's ledger, so
+        it has to cope with every date these files actually print."""
+        read = gen.VARIANTS[stem].read_date
+        for account in gen.load_accounts(gen.content_path(stem)):
+            for txn in account["transactions"]:
+                if txn["date"] is None:  # pending rows carry no date
+                    continue
+                assert read(txn["date"]) is not None, txn["date"]
+
+    @pytest.mark.parametrize("stem", ["default", "german", "mandarin"])
+    def test_dates_round_trip(self, gen, stem):
+        variant = gen.VARIANTS[stem]
+        for when in [date(2026, 3, 1), date(2026, 7, 31), date(2026, 12, 25)]:
+            assert variant.read_date(variant.render_date(when)) == when
+
+    def test_german_months_are_not_taken_from_the_c_locale(self, gen):
+        """`%b` would render "Jul" on one machine and "Juli" on another; the
+        seeded ledger says "31. Juli 2026" and has to keep saying it."""
+        assert gen._render_german(date(2026, 7, 31)) == "31. Juli 2026"
+        assert gen._render_german(date(2026, 8, 5)) == "05. Aug. 2026"
+
+    # -- what fan-out copies and what it re-expresses ------------------------
+
+    def test_localize_keeps_the_figures_and_translates_the_rest(self, gen):
+        accounts = gen.load_accounts(gen.content_path("default"))
+        account = gen.find_account(accounts, SEEDED_ACCOUNTS[2])
+        rows = gen.generate(
+            account, count=4, seed=1, max_amount=200.0, types=None, start=None
+        )
+        english = gen.localize(rows, gen.VARIANTS["default"])
+        german = gen.localize(rows, gen.VARIANTS["german"])
+
+        assert [(r["amount"], r["balance"]) for r in english] == [
+            (r["amount"], r["balance"]) for r in german
+        ]
+        assert [r["description"] for r in english] == [r["description"] for r in german]
+        assert [r["date"] for r in english] != [r["date"] for r in german]
+        assert all(r["type"] in gen.GERMAN_TYPES.values() for r in german)
+
+    def test_the_seeded_accounts_fan_out_to_the_translated_files(self, gen):
+        targets = gen.fanout_targets(gen.content_path("default"), SEEDED_ACCOUNTS[0])
+        assert sorted(path.stem for _, path in targets) == self.TRANSLATED
+
+    def test_a_noise_variants_own_account_fans_out_nowhere(self, gen):
+        """The noise files append with `+accounts`; those accounts are theirs
+        alone, so nothing else carries a copy to keep in step."""
+        path = gen.content_path("long_descriptions")
+        name = str(gen.load_accounts(path)[0]["name"])
+        assert gen.fanout_targets(path, name) == []
+
+    # -- writing -------------------------------------------------------------
+
+    def test_a_write_keeps_every_variant_in_step(self, gen, content):
+        name = SEEDED_ACCOUNTS[1]
+        before = len(self._figures(gen, content / "default.yaml", name))
+        self._run(
+            gen,
+            "--account",
+            "8891",
+            "--count",
+            "2",
+            "--types",
+            "Interest",
+            "--in-place",
+        )
+        baseline = self._figures(gen, content / "default.yaml", name)
+        assert len(baseline) == before + 2
+        for stem in self.TRANSLATED:
+            assert self._figures(gen, content / f"{stem}.yaml", name) == baseline
+            gen.check_chain(
+                gen.find_account(gen.load_accounts(content / f"{stem}.yaml"), name)
+            )
+
+    def test_each_file_gets_its_own_dates_and_types(self, gen, content):
+        self._run(
+            gen,
+            "--account",
+            "8891",
+            "--count",
+            "1",
+            "--types",
+            "Interest",
+            "--in-place",
+        )
+        name = SEEDED_ACCOUNTS[1]
+        for stem in ["default"] + self.TRANSLATED:
+            newest = gen.find_account(
+                gen.load_accounts(content / f"{stem}.yaml"), name
+            )["transactions"][-1]
+            assert gen.VARIANTS[stem].read_date(newest["date"]) is not None
+            expected = gen.VARIANTS[stem].types.get("Interest", "Interest")
+            assert newest["type"] == expected
+
+    def test_the_translated_blocks_are_flagged_for_translation(self, gen, content):
+        """The description is free text, so fan-out cannot finish the job -- it
+        has to say so in the file rather than hope someone remembers."""
+        self._run(
+            gen,
+            "--account",
+            "8891",
+            "--count",
+            "1",
+            "--types",
+            "Interest",
+            "--in-place",
+        )
+        assert "translate them" not in (content / "default.yaml").read_text("utf-8")
+        for stem in self.TRANSLATED:
+            assert "translate them" in (content / f"{stem}.yaml").read_text("utf-8")
+
+    def test_variants_source_writes_only_the_source(self, gen, content):
+        before = {
+            stem: (content / f"{stem}.yaml").read_text("utf-8")
+            for stem in self.TRANSLATED
+        }
+        self._run(
+            gen,
+            "--account",
+            "8891",
+            "--count",
+            "1",
+            "--types",
+            "Interest",
+            "--variants",
+            "source",
+            "--in-place",
+        )
+        for stem, text in before.items():
+            assert (content / f"{stem}.yaml").read_text("utf-8") == text
+
+    def test_an_unknown_variant_is_named_in_the_error(self, gen, content):
+        with pytest.raises(SystemExit, match="klingon"):
+            self._run(gen, "--account", "8891", "--variants", "klingon")
+
+    def test_comments_survive_the_fan_out(self, gen, content):
+        self._run(
+            gen,
+            "--account",
+            "8891",
+            "--count",
+            "1",
+            "--types",
+            "Interest",
+            "--in-place",
+        )
+        # The comment above the card account is the reason every write here is
+        # a text splice rather than a yaml round-trip.
+        assert "Behind" in (content / "german.yaml").read_text("utf-8")
+
+    def test_a_diverged_variant_is_refused_before_anything_is_written(
+        self, gen, content
+    ):
+        """Appending identical figures only keeps files in step if they were in
+        step already; on top of a disagreement it just buries it."""
+        german = content / "german.yaml"
+        german.write_text(
+            german.read_text("utf-8").replace("amount: 18.42", "amount: 18.43"),
+            encoding="utf-8",
+        )
+        before = {path.name: path.read_text("utf-8") for path in content.glob("*.yaml")}
+        with pytest.raises(SystemExit, match="disagree"):
+            self._run(gen, "--account", "8891", "--count", "1", "--in-place")
+        for path in content.glob("*.yaml"):
+            assert path.read_text("utf-8") == before[path.name]
+
+    def test_a_failed_splice_rolls_back_every_file(self, gen, content):
+        """`splice` restores the one file it was editing; a fan-out writes
+        several, and a half-applied one is the state this all exists to avoid."""
+        before = {path.name: path.read_text("utf-8") for path in content.glob("*.yaml")}
+        row = '      - date: "Jan 01, 2026"\n'
+        plan = [
+            (content / "default.yaml", SEEDED_ACCOUNTS[0], row, 1),
+            # Claiming three rows while inserting one fails the post-write check.
+            (content / "german.yaml", SEEDED_ACCOUNTS[0], row, 3),
+        ]
+        with pytest.raises(ValueError):
+            gen.splice_all(plan)
+        for path in content.glob("*.yaml"):
+            assert path.read_text("utf-8") == before[path.name]

@@ -8,7 +8,11 @@ defaults:
 # read out of this ledger, so the numbers must be identical across every
 # content variant or the same task would need a different answer per language.
 nav_actions: ["Konto eröffnen"]
-sign_out_label: "Abmelden"
+# The phone number is a figure, so it stays identical across variants for the
+# same reason the amounts do.
+open_account_heading: "Neues Konto eröffnen"
+open_account_body: "Neue Konten werden telefonisch eröffnet. Rufen Sie uns an, und ein Firmenkundenberater richtet Ihr Konto ein."
+close_label: "Schließen"
 accounts_heading: "Ihre Konten"
 back_to_accounts_label: "Zurück zu den Konten"
 
@@ -190,3 +194,13 @@ accounts:
         type: "Gutschrift"
         amount: 146.55
         balance: -1446.43
+      - date: "01. Aug. 2026"
+        description: "SOLLZINSEN AUF UMSÄTZE"
+        type: "Zinsen"
+        amount: -4.77
+        balance: -1592.98
+      - date: "31. Juli 2026"
+        description: "SOLLZINSEN AUF UMSÄTZE"
+        type: "Zinsen"
+        amount: -79.00
+        balance: -1588.21

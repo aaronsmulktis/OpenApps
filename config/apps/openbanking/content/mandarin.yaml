@@ -6,7 +6,11 @@ defaults:
 # and every numeric amount/balance stay identical so a task's expected answer
 # does not change with the language variant.
 nav_actions: ["开设账户"]
-sign_out_label: "退出登录"
+# The phone number is a figure, so it stays identical across variants for the
+# same reason the amounts do.
+open_account_heading: "开设新账户"
+open_account_body: "新账户需通过电话开设。请致电我们，企业客户经理将为您办理。"
+close_label: "关闭"
 accounts_heading: "您的账户"
 back_to_accounts_label: "返回账户列表"
 
@@ -187,3 +191,13 @@ accounts:
         type: "退款"
         amount: 146.55
         balance: -1446.43
+      - date: "2026年8月1日"
+        description: "消费利息"
+        type: "利息"
+        amount: -4.77
+        balance: -1592.98
+      - date: "2026年7月31日"
+        description: "消费利息"
+        type: "利息"
+        amount: -79.00
+        balance: -1588.21
