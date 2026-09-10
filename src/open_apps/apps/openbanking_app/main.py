@@ -144,6 +144,11 @@ styles = Style("""
         --pico-contrast-border: var(--color-fg);
         --pico-contrast-inverse: var(--color-bg);
         --pico-table-border-color: var(--color-border);
+        /* The `article` inside the "open an account" dialog. Pico paints the
+           body and its header/footer bands from these three. */
+        --pico-card-background-color: var(--color-bg);
+        --pico-card-sectioning-background-color: var(--color-surface);
+        --pico-card-border-color: var(--color-border);
         --pico-form-element-background-color: var(--color-bg);
         --pico-form-element-active-background-color: var(--color-bg);
         --pico-form-element-border-color: var(--color-border);
@@ -179,20 +184,7 @@ styles = Style("""
         margin-bottom: 0;
     }
     .ob-masthead-spacer { flex: 1 1 auto; }
-    .ob-menu-icon {
-        font-size: 1.5rem;
-        line-height: 1;
-        color: var(--color-header-fg, var(--color-on-primary));
-    }
     .ob-masthead-actions { display: flex; align-items: center; gap: 1rem; }
-    .ob-icon-btn {
-        font-size: 1.1rem;
-        color: var(--color-header-fg, var(--color-on-primary));
-        background: none;
-        border: none;
-        padding: 0.25rem;
-        cursor: pointer;
-    }
     /* Fill and text are the masthead's own pair, inverted -- not `--color-bg`
        over `--color-header-bg`, which happens to read as white-on-navy in the
        light theme purely because the page is white there, and collapses to
@@ -204,8 +196,20 @@ styles = Style("""
         font-weight: 600;
         background-color: var(--color-header-fg, var(--color-on-primary));
         color: var(--color-header-bg, var(--color-primary));
+        cursor: pointer;
     }
-    .ob-signout { color: var(--color-header-fg, var(--color-on-primary)); }
+
+    /* Pico supplies the overlay, the centring and the close glyph for a
+       `dialog[open]`; only the phone number needs saying, since it is the
+       reason the dialog exists. */
+    .ob-dialog article { max-width: 30rem; }
+    .ob-dialog-phone {
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--color-link, var(--color-accent));
+        margin: 1rem 0;
+    }
 
     .ob-page { padding: 1.5rem; }
     .ob-summary { background-color: var(--color-bg); padding: 1.5rem; }
@@ -615,23 +619,70 @@ def filter_txns(
 
 
 def masthead():
+    """The bar. Every control in it does something.
+
+    It used to also carry a hamburger, a magnifier, a help and a profile glyph
+    and a "Sign out" caption, all inert. Chrome that looks clickable and isn't
+    is worse than absent here: an agent that tries one learns nothing from the
+    non-response and burns a step, so the bar now holds only the wordmark and
+    the one CTA that has an answer.
+    """
     c = cfg()
     actions = [
-        Button(label, cls="ob-ghost-btn", type="button") for label in c.nav_actions
+        Button(
+            label,
+            cls="ob-ghost-btn",
+            type="button",
+            hx_get="/openbanking/open-account",
+            hx_target="#ob-dialog",
+            hx_swap="outerHTML",
+        )
+        for label in c.nav_actions
     ]
     return Div(
-        Span("☰", cls="ob-menu-icon"),
         logo_title_container,
         Span(cls="ob-masthead-spacer"),
-        Div(
-            Button("⌕", cls="ob-icon-btn", type="button", aria_label=c.search_label),
-            Button("?", cls="ob-icon-btn", type="button"),
-            Button("◉", cls="ob-icon-btn", type="button"),
-            *actions,
-            Span(c.sign_out_label, cls="ob-signout"),
-            cls="ob-masthead-actions",
-        ),
+        Div(*actions, cls="ob-masthead-actions"),
         cls="ob-masthead",
+    )
+
+
+def open_account_dialog(shown: bool = False):
+    """The CTA's answer: a modal pointing the caller at the phone line.
+
+    Rendered by a GET partial and swapped into a placeholder, exactly like the
+    number disclosures -- opening or closing it writes nothing, so the app
+    stays read-only and ``/openbanking_all`` stays byte-identical.
+    """
+    if not shown:
+        return Div(id="ob-dialog")
+    c = cfg()
+    dismiss = {
+        "hx_get": "/openbanking/open-account?show=0",
+        "hx_target": "#ob-dialog",
+        "hx_swap": "outerHTML",
+    }
+    return Div(
+        Dialog(
+            Article(
+                Header(
+                    Button(
+                        type="button", rel="prev", aria_label=c.close_label, **dismiss
+                    ),
+                    H3(c.open_account_heading),
+                ),
+                P(c.open_account_body),
+                # The number is the point of the dialog, so it is the largest
+                # thing in it rather than a run of body text.
+                Div(c.open_account_phone, cls="ob-dialog-phone"),
+                Footer(
+                    Button(c.close_label, cls="secondary", type="button", **dismiss)
+                ),
+            ),
+            open=True,
+            cls="ob-dialog",
+        ),
+        id="ob-dialog",
     )
 
 
@@ -975,6 +1026,9 @@ def page(*content):
         styles,
         masthead(),
         *content,
+        # Empty until the masthead CTA is clicked; the swap target has to exist
+        # on every page because the CTA sits in the bar on every page.
+        open_account_dialog(),
         cls="ob-root",
         data_theme=pico_theme(),
     )
@@ -1090,6 +1144,16 @@ def openbanking_account_numbers(account_id: int, account: int = 0, routing: int 
         # swap replaces the card face and the `routing` flag is meaningless.
         return card_face(acct, bool(account))
     return number_panel(acct, bool(account), bool(routing))
+
+
+@rt("/openbanking/open-account")
+def openbanking_open_account(show: int = 1):
+    """htmx partial: the "open an account" dialog, open or dismissed.
+
+    Both states come from the same route so the close button is a swap back to
+    the empty placeholder rather than a second endpoint.
+    """
+    return open_account_dialog(bool(show))
 
 
 @app.get("/openbanking_all")

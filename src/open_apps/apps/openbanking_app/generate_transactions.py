@@ -8,7 +8,7 @@ Entry point: ``python -m open_apps.apps.openbanking_app.generate_transactions``
 / ``openbanking-gen-txns``.
 
 Generates extra ledger rows for one seeded OpenBanking account and either
-prints them or splices them into the content file they came from.
+prints them or splices them into the content files that carry that account.
 
 Why a generator rather than hand-written YAML: the ledger has to stay
 *arithmetically coherent* to be worth reading. Each row's ``balance`` is the
@@ -18,43 +18,58 @@ its date has to fall on or before the oldest existing date. Getting that wrong
 by hand is easy and invisible: the page still renders, and only an agent asked
 to reconcile the account notices.
 
-Two properties the app depends on are preserved by construction:
+Three properties the app depends on are preserved by construction:
 
 * **Determinism.** ``--seed`` fixes the whole draw, so re-running with the same
   arguments produces byte-identical YAML. The app seeds its tables from config
   at startup and ``/openbanking_all`` must be byte-stable (see
   ``openbanking_app/main.py``), so a generator that drifted between runs would
-  make the config itself a source of nondeterminism.
+  make the config itself a source of nondeterminism. This is also why no date
+  here ever defaults to *today*: see ``generate``.
+* **Variant parity.** ``german.yaml`` and ``mandarin.yaml`` restate the seeded
+  accounts in full rather than inheriting them, and every amount and balance
+  has to agree across all three or the same task needs a different answer per
+  language (``test_seeded_account_figures_are_identical``). So a write fans out
+  by default: the generated figures are spliced into *every* variant that
+  carries the account, with each file's own date format and type vocabulary.
+  ``--variants source`` opts out.
 * **Config, not database.** The output is seed YAML. Nothing here writes to
   ``openbanking.db``: the app is read-only at runtime, and mutating the live
   database out from under it would inject a diff into every unrelated
   todo/calendar task's reward.
 
-What it will *not* check for you: ``config/tasks/openbanking.yaml`` reads
-specific figures off specific accounts, and some of its goals quantify over
-the ledger ("exactly two transactions of type 'Card'", "the one of type 'Card'
-with the largest amount"). Use ``--types`` and ``--max-amount`` to stay inside
-those, and re-run ``pytest tests/test_openbanking.py`` after writing.
+What it will *not* do for you: descriptions are free text, so a fanned-out row
+keeps the source variant's wording in the translated files and is flagged with
+a comment for a human to finish. And ``config/tasks/openbanking.yaml`` reads
+specific figures off specific accounts, with some goals quantifying over the
+ledger ("exactly two transactions of type 'Card'", "the one of type 'Card' with
+the largest amount"). Use ``--types`` and ``--max-amount`` to stay inside those,
+and re-run ``pytest tests/test_openbanking.py`` after writing.
 
 Examples::
 
-    # Preview three rows for the checking account
+    # Preview three rows for the checking account, as every variant would write
+    # them
     openbanking-gen-txns --account "BUS COMPLETE CHK (...5555)" --count 3
 
-    # Write them into the German variant, keeping the amounts small
-    openbanking-gen-txns --content german --account "BUS SELECT SAVINGS (...8891)" \\
+    # Write two small rows into default.yaml, german.yaml and mandarin.yaml
+    openbanking-gen-txns --account "BUS SELECT SAVINGS (...8891)" \\
         --count 2 --max-amount 500 --in-place
+
+    # Write only the file they were generated against
+    openbanking-gen-txns --account "5555" --count 1 --variants source --in-place
 """
 
 from __future__ import annotations
 
 import argparse
 import random
+import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Mapping, Optional
 
 import yaml
 
@@ -62,15 +77,133 @@ from open_apps import config_dir
 
 CONTENT_DIR = config_dir() / "apps" / "openbanking" / "content"
 
-# The date format the seeded ledger prints. The translated variants use their
-# own ("15. Sep. 2026", "2026年9月15日"), so a generated row for those is dated
-# with `--date-format` -- or with this one, which at least sorts correctly and
-# is obvious to fix by hand.
+# The date format the English content files print.
 DATE_FORMAT = "%b %d, %Y"
 
 # Business days between generated postings, drawn per row. Small enough that a
 # handful of rows stay inside one statement cycle.
 DAY_STEP = (1, 6)
+
+# German month names as the seeded ledger writes them -- the standard
+# abbreviations, which leave the four short months (März, Mai, Juni, Juli)
+# unabbreviated and undotted.
+#
+# A table rather than `strftime`: `%b` renders through the C locale, so it
+# would emit "Aug" on a machine without `de_DE` installed and "Aug." on one
+# with it. A seed generator whose output depends on the host's installed
+# locales is not deterministic in any useful sense.
+GERMAN_MONTHS = (
+    "Jan.",
+    "Feb.",
+    "März",
+    "Apr.",
+    "Mai",
+    "Juni",
+    "Juli",
+    "Aug.",
+    "Sep.",
+    "Okt.",
+    "Nov.",
+    "Dez.",
+)
+
+_GERMAN_DATE = re.compile(r"^(\d{1,2})\.\s+(\S+)\s+(\d{4})$")
+_MANDARIN_DATE = re.compile(r"^(\d{4})年(\d{1,2})月(\d{1,2})日$")
+
+# Each variant's word for each transaction type, taken from the seeded rows
+# rather than invented -- a generated "Card" charge dropped into `german.yaml`
+# untranslated would read as a type that file has never used, and the card
+# tasks count rows by type. `test_the_type_tables_match_the_seeded_vocabulary`
+# holds these to what the content files actually say.
+GERMAN_TYPES = {
+    "ACH credit": "SEPA-Gutschrift",
+    "ACH debit": "SEPA-Lastschrift",
+    "Card": "Karte",
+    "Deposit": "Einzahlung",
+    "Fee": "Gebühr",
+    "Interest": "Zinsen",
+    "Other": "Sonstige",
+    "Payment": "Zahlung",
+    "Refund": "Gutschrift",
+    "Transfer": "Überweisung",
+}
+MANDARIN_TYPES = {
+    "ACH credit": "ACH 入账",
+    "ACH debit": "ACH 出账",
+    "Card": "银行卡",
+    "Deposit": "存款",
+    "Fee": "手续费",
+    "Interest": "利息",
+    "Other": "其他",
+    "Payment": "还款",
+    "Refund": "退款",
+    "Transfer": "转账",
+}
+
+
+def _render_english(when: date) -> str:
+    return when.strftime(DATE_FORMAT)
+
+
+def _read_english(value: str) -> Optional[date]:
+    try:
+        return datetime.strptime(value, DATE_FORMAT).date()
+    except ValueError:
+        return None
+
+
+def _render_german(when: date) -> str:
+    return f"{when.day:02d}. {GERMAN_MONTHS[when.month - 1]} {when.year}"
+
+
+def _read_german(value: str) -> Optional[date]:
+    match = _GERMAN_DATE.match(value)
+    if match is None or match.group(2) not in GERMAN_MONTHS:
+        return None
+    day, month, year = match.groups()
+    return date(int(year), GERMAN_MONTHS.index(month) + 1, int(day))
+
+
+def _render_mandarin(when: date) -> str:
+    return f"{when.year}年{when.month}月{when.day}日"
+
+
+def _read_mandarin(value: str) -> Optional[date]:
+    match = _MANDARIN_DATE.match(value)
+    if match is None:
+        return None
+    year, month, day = (int(group) for group in match.groups())
+    return date(year, month, day)
+
+
+@dataclass(frozen=True)
+class Variant:
+    """How one content file writes a row that the other files also carry.
+
+    Fan-out copies a generated row's *figures* verbatim -- that is the whole
+    point, the variants have to agree on every amount and balance -- and
+    re-expresses everything a reader sees. Dates and types are closed
+    vocabularies, so they translate by table; the description is free text and
+    does not, so it is copied in the source language and flagged.
+    """
+
+    stem: str
+    render_date: Callable[[date], str]
+    read_date: Callable[[str], Optional[date]]
+    # Source-language type -> this variant's word for it. Empty on an English
+    # variant, which needs no mapping.
+    types: Mapping[str, str] = field(default_factory=dict)
+
+
+# Keyed by content-file stem. A stem that is missing from here is treated as
+# English (`long_descriptions` and the other noise variants are), which is only
+# ever wrong for a file that translates -- and `fanout_targets` refuses to
+# write such a file rather than guessing.
+VARIANTS: dict[str, Variant] = {
+    "default": Variant("default", _render_english, _read_english),
+    "german": Variant("german", _render_german, _read_german, GERMAN_TYPES),
+    "mandarin": Variant("mandarin", _render_mandarin, _read_mandarin, MANDARIN_TYPES),
+}
 
 
 @dataclass(frozen=True)
@@ -216,18 +349,21 @@ def oldest_posting(account: dict) -> tuple[float, Optional[date]]:
 
 
 def parse_date(value) -> Optional[date]:
-    """The seeded date string as a date, or None if it is not in that format.
+    """The seeded date string as a date, in whichever variant's format it is in.
 
-    None is a normal outcome, not an error: the translated variants print
-    "15. Sep. 2026" and "2026年9月15日", which this deliberately does not try to
-    parse. The caller falls back to ``--start-date``.
+    Every registered variant is tried, so generating against ``german`` chains
+    off "05. Aug. 2026" as readily as against ``default``. None means no
+    variant recognised it, and the caller has to be told to pass
+    ``--start-date`` -- it is never quietly replaced with today.
     """
     if not value:
         return None
-    try:
-        return datetime.strptime(str(value), DATE_FORMAT).date()
-    except ValueError:
-        return None
+    text = str(value)
+    for variant in VARIANTS.values():
+        parsed = variant.read_date(text)
+        if parsed is not None:
+            return parsed
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -265,10 +401,14 @@ def generate(
     seed: int,
     max_amount: float,
     types: Optional[list[str]],
-    date_format: str,
     start: Optional[date],
 ) -> list[dict]:
-    """``count`` rows continuing ``account``'s ledger backwards in time."""
+    """``count`` rows continuing ``account``'s ledger backwards in time.
+
+    Rows carry ``when`` as a real ``date`` rather than a formatted string:
+    which string it becomes depends on the variant it is written into, and
+    ``localize`` decides that per file.
+    """
     rng = random.Random(seed)
     is_card = account.get("kind", "deposit") == "credit_card"
     pool = CARD_MERCHANTS if is_card else DEPOSIT_MERCHANTS
@@ -284,7 +424,24 @@ def generate(
             )
 
     balance, oldest = oldest_posting(account)
-    when = start or oldest or date.today()
+    when = start or oldest
+    if when is None:
+        # Deliberately not `date.today()`. Three reasons, any one of them
+        # enough: the seeded ledger is a fixed corpus dated Aug 2026 and rows
+        # are appended *older* than its oldest posting, so today's date would
+        # sort a new row above the ones it is supposed to sit under; the
+        # generator's output must be byte-identical for the same arguments, and
+        # a date that moves with the calendar makes the config a source of
+        # nondeterminism; and the card's statement cycle only reconciles
+        # because every posting falls where the seed comments say it does.
+        raise SystemExit(
+            f"{account.get('name')!r} has no posted row this generator can read a "
+            "date from, so there is nothing to chain the new rows off. Pass "
+            "--start-date YYYY-MM-DD.\n"
+            "Today's date is not used as a fallback: the ledger is a fixed corpus, "
+            "rows are appended older than the oldest posting, and output that "
+            "changed with the calendar would stop being reproducible."
+        )
     holder = str(account.get("holder", ""))
 
     rows = []
@@ -294,7 +451,7 @@ def generate(
         amount = draw_amount(rng, merchant.credit, max_amount)
         rows.append(
             {
-                "date": when.strftime(date_format),
+                "when": when,
                 "description": render_description(rng, merchant, when, holder),
                 "type": merchant.type,
                 "amount": amount,
@@ -304,6 +461,124 @@ def generate(
         # The next row back is the balance *before* this posting.
         balance = round(balance - amount, 2)
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Fanning out across the content variants
+
+
+def localize(
+    rows: list[dict], variant: Variant, date_format: Optional[str] = None
+) -> list[dict]:
+    """``rows`` as ``variant`` writes them.
+
+    The figures are copied, never recomputed. Two variants that disagree on an
+    amount or a balance would make the same task need a different answer per
+    language, which is the whole thing this exists to prevent -- so only the
+    date and the type, both closed vocabularies, are re-expressed.
+    """
+    render = variant.render_date
+    if date_format is not None:
+        render = lambda when: when.strftime(date_format)  # noqa: E731
+    return [
+        {
+            "date": render(row["when"]),
+            "description": row["description"],
+            "type": variant.types.get(row["type"], row["type"]),
+            "amount": row["amount"],
+            "balance": row["balance"],
+        }
+        for row in rows
+    ]
+
+
+def fanout_targets(source: Path, account_name: str) -> list[tuple[Variant, Path]]:
+    """Every *other* content file that carries its own copy of this account.
+
+    Owning is not inheriting: the noise variants append with ``+accounts`` and
+    the accounts they add are theirs alone, so they never match a seeded name
+    and are correctly skipped. A file that does own the account but has no
+    entry in ``VARIANTS`` is an error rather than a guess -- writing English
+    dates and types into a translated ledger is exactly the silent damage this
+    is meant to stop.
+    """
+    targets = []
+    for path in sorted(CONTENT_DIR.glob("*.yaml")):
+        if path.resolve() == source.resolve():
+            continue
+        if account_name not in {str(a.get("name")) for a in load_accounts(path)}:
+            continue
+        variant = VARIANTS.get(path.stem)
+        if variant is None:
+            raise SystemExit(
+                f"{path.name} carries its own copy of {account_name!r}, but this "
+                "generator has no date format or type table for it. Add one to "
+                "`VARIANTS`, or pass `--variants source` and edit that file by hand."
+            )
+        targets.append((variant, path))
+    return targets
+
+
+def check_parity(source: dict, target: dict, path: Path) -> None:
+    """Refuse to fan out onto a ledger that has already diverged.
+
+    Appending identical figures only keeps the variants in step if they were in
+    step to begin with. If they are not, the right fix is to reconcile them by
+    hand first -- splicing on top would bury the existing disagreement under a
+    row that looks correct.
+    """
+    source_txns = list(source.get("transactions") or [])
+    target_txns = list(target.get("transactions") or [])
+    name = source.get("name")
+    if len(source_txns) != len(target_txns):
+        raise SystemExit(
+            f"{path.name} and the source disagree on {name!r} before any write: "
+            f"{len(target_txns)} transactions there, {len(source_txns)} here. "
+            "Reconcile them first (`pytest tests/test_openbanking.py -k figures`)."
+        )
+    for i, (here, there) in enumerate(zip(source_txns, target_txns)):
+        if here.get("amount") != there.get("amount") or here.get(
+            "balance"
+        ) != there.get("balance"):
+            raise SystemExit(
+                f"{path.name} and the source disagree on row {i + 1} of {name!r} "
+                f"before any write: {there.get('amount')}/{there.get('balance')} "
+                f"there, {here.get('amount')}/{here.get('balance')} here. "
+                "Reconcile them first."
+            )
+
+
+def translation_note(indent: int) -> str:
+    """The comment that marks a generated block in a translating variant.
+
+    Keyed off the *target* file rather than off whether it was fanned out to:
+    the merchant pool is English wording, so a row generated straight into
+    ``german.yaml`` needs the same flag as one copied there.
+    """
+    pad = " " * indent
+    return (
+        f"{pad}# Generated rows. The figures are shared with the other content\n"
+        f"{pad}# variants and have to stay identical; the dates and types are this\n"
+        f"{pad}# file's own. The descriptions are still English -- translate them.\n"
+    )
+
+
+def splice_all(plan: list[tuple[Path, str, str, int]]) -> None:
+    """Apply every splice in ``plan``, or none of them.
+
+    ``splice`` already restores the one file it was editing, but a fan-out
+    writes several: a failure on the third would otherwise leave the first two
+    written and the variants out of step -- precisely the state this exists to
+    prevent.
+    """
+    originals = {path: path.read_text(encoding="utf-8") for path, *_ in plan}
+    try:
+        for path, account_name, block, added in plan:
+            splice(path, account_name, block, added)
+    except Exception:
+        for path, text in originals.items():
+            path.write_text(text, encoding="utf-8")
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -428,8 +703,17 @@ def main() -> None:
     p.add_argument(
         "--content",
         default="default",
-        help="Content variant stem under config/apps/openbanking/content, or a "
-        "path to a yaml file. Defaults to `default`.",
+        help="Content variant the rows are generated *against*: a stem under "
+        "config/apps/openbanking/content, or a path to a yaml file. Defaults to "
+        "`default`. See --variants for which files get written.",
+    )
+    p.add_argument(
+        "--variants",
+        default="all",
+        help="Which content files to write. `all` (the default) writes the "
+        "--content file and every other variant carrying its own copy of the "
+        "account, so their figures stay in step; `source` writes only the "
+        "--content file; or give a comma-separated list of stems.",
     )
     p.add_argument("--count", type=int, default=3, help="How many rows to generate.")
     p.add_argument(
@@ -453,9 +737,9 @@ def main() -> None:
     )
     p.add_argument(
         "--date-format",
-        default=DATE_FORMAT,
-        help="strftime format for the generated dates. Override for the "
-        "translated variants.",
+        help="strftime format for the dates written into the --content file. "
+        "Rarely needed: each variant already knows its own format, and the "
+        "fanned-out files always use theirs.",
     )
     p.add_argument(
         "--start-date",
@@ -465,7 +749,7 @@ def main() -> None:
     p.add_argument(
         "--in-place",
         action="store_true",
-        help="Append the rows to the account in the content file instead of "
+        help="Append the rows to the account in the content files instead of "
         "printing them. Comments and formatting are preserved.",
     )
     args = p.parse_args()
@@ -485,6 +769,7 @@ def main() -> None:
         )
     account = find_account(accounts, args.account)
     check_chain(account)
+    name = str(account["name"])
 
     start = date.fromisoformat(args.start_date) if args.start_date else None
     rows = generate(
@@ -493,22 +778,81 @@ def main() -> None:
         seed=args.seed,
         max_amount=args.max_amount,
         types=args.types,
-        date_format=args.date_format,
         start=start,
     )
 
+    # An unregistered stem is an English variant (`long_descriptions` and the
+    # rest of the noise files are); only the translated ones need a table, and
+    # they have one.
+    source_variant = VARIANTS.get(path.stem, VARIANTS["default"])
+    targets = resolve_targets(args.variants, path, name)
+
     # 6 spaces: `accounts:` items sit at 2, their keys at 4, list entries at 6.
-    block = render_yaml(rows, indent=6)
+    indent = 6
+
+    def block_for(variant: Variant, date_format: Optional[str] = None) -> str:
+        # A variant with a type table is one that translates, so its
+        # descriptions -- which the English merchant pool supplied -- are the
+        # one part of the row a human still has to finish.
+        note = translation_note(indent) if variant.types else ""
+        return note + render_yaml(localize(rows, variant, date_format), indent)
+
+    plan = [(path, name, block_for(source_variant, args.date_format), len(rows))]
+    for variant, target_path in targets:
+        check_parity(
+            account, find_account(load_accounts(target_path), name), target_path
+        )
+        plan.append((target_path, name, block_for(variant), len(rows)))
+
     if args.in_place:
-        splice(path, str(account["name"]), block, len(rows))
+        splice_all(plan)
+        written = "\n  ".join(str(entry[0]) for entry in plan)
         print(
-            f"Appended {len(rows)} transaction(s) to {account['name']!r} in {path}.\n"
-            f"Re-run `pytest tests/test_openbanking.py` -- the content variants "
-            f"must agree on every amount and balance.",
+            f"Appended {len(rows)} transaction(s) to {name!r} in:\n  {written}\n"
+            "Re-run `pytest tests/test_openbanking.py` -- the content variants "
+            "must agree on every amount and balance.",
             file=sys.stderr,
         )
+        if any("# Generated rows." in entry[2] for entry in plan):
+            print(
+                "Descriptions in the translated files are still English; each "
+                "block is marked with a comment.",
+                file=sys.stderr,
+            )
     else:
-        print(block, end="")
+        for target_path, _, text, _ in plan:
+            if len(plan) > 1:
+                print(f"# --- {target_path.name} " + "-" * 40)
+            print(text, end="")
+
+
+def resolve_targets(
+    selection: str, source: Path, account_name: str
+) -> list[tuple[Variant, Path]]:
+    """``--variants`` as the list of other files to write.
+
+    Fanning out is the default because the invariant is a cross-file one: the
+    variants restate the seeded accounts in full, and a figure added to one of
+    them alone makes the same task need a different answer per language.
+    """
+    choice = selection.strip().casefold()
+    if choice == "source":
+        return []
+    available = fanout_targets(source, account_name)
+    if choice == "all":
+        return available
+    wanted = [stem.strip() for stem in selection.split(",") if stem.strip()]
+    by_stem = {
+        target_path.stem: (variant, target_path) for variant, target_path in available
+    }
+    missing = [stem for stem in wanted if stem not in by_stem]
+    if missing:
+        raise SystemExit(
+            f"--variants names {', '.join(missing)}, which do not carry their own "
+            f"copy of {account_name!r}. Files that do: "
+            f"{', '.join(sorted(by_stem)) or '(none)'}."
+        )
+    return [by_stem[stem] for stem in wanted]
 
 
 if __name__ == "__main__":

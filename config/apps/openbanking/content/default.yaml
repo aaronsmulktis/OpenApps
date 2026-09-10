@@ -3,8 +3,16 @@ title: ${apps.start_page.apps.openbanking.title}
 description: ${apps.start_page.apps.openbanking.description}
 
 # --- Masthead / chrome ------------------------------------------------------
+# The masthead holds the wordmark and these CTAs and nothing else -- the bar's
+# inert glyphs (menu/search/help/profile) and the "Sign out" caption were
+# removed rather than left as controls that swallow a click.
 nav_actions: ["Open an account"]
-sign_out_label: "Sign out"
+# Clicking a CTA opens this dialog. Read-only, like everything else here: the
+# app cannot open an account, so it says who can.
+open_account_heading: "Open a new account"
+open_account_body: "New accounts are opened over the phone. Call us and a business banker will set yours up."
+open_account_phone: "1-800-555-5555"
+close_label: "Close"
 accounts_heading: "Your accounts"
 back_to_accounts_label: "Back to accounts"
 
@@ -247,3 +255,13 @@ accounts:
         type: "Refund"
         amount: 146.55
         balance: -1446.43
+      - date: "Aug 01, 2026"
+        description: "INTEREST CHARGE ON PURCHASES"
+        type: "Interest"
+        amount: -4.77
+        balance: -1592.98
+      - date: "Jul 31, 2026"
+        description: "INTEREST CHARGE ON PURCHASES"
+        type: "Interest"
+        amount: -79.00
+        balance: -1588.21
