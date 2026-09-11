@@ -81,16 +81,16 @@ conversion happens; every parser goes through `ActionParser.rescale`.
 | normalized 0-1000 | `1000` | Qwen-VL, GLM-VL |
 | normalized [0, N) | `N` | PaliGemma/Gemma-lineage `<locNNNN>` bins are 0-1024 |
 
-Each parser family carries a default (`uitars`: null, `qwen3vl`: 1000). Override
-per model in the agent yaml with `coord_scale: N`. Note this is one scalar applied
-against each viewport axis, which is what a *square* normalized grid means — it
+Each parser family carries a default (`uitars`: raw pixels, `qwen3vl`: 1000). In the
+agent yaml, leaving `coord_scale` unset (or `null`) means "use the family default";
+set `coord_scale: N` to override. Note this is one scalar applied
 cannot express a model predicting in its own non-square resized image space.
 
 The most reliable setup is to *declare* the grid in the prompt and set
 `coord_scale` to match, rather than reverse-engineering a checkpoint's native
 convention — then the conversion is correct by construction as long as the model
-complies. `config/agent/Qwen3.6-VL-computer-use.yaml` and
-`config/agent/gemma-4-31B-coords.yaml` both do this with a 1000x1000 grid.
+complies. `config/agent/Qwen3.6-VL-computer-use.yaml` does this with a 1000x1000
+grid.
 
 Under the `uitars` grammar, rescaling applies to UI-TARS-native forms
 (`click(point=)`, `click(start_box=)`, `click(x=)`, `right_single(point=)`, and

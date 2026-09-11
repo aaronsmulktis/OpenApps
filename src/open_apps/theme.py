@@ -79,9 +79,9 @@ def load_theme(name: str) -> dict:
     ``assets``. Falls back to the default theme when ``name`` is unknown so
     a bad override degrades gracefully instead of raising.
     """
+    if not name or any(not (char.isalnum() or char in "-_") for char in name):
+        name = _DEFAULT_THEME
     path = _THEME_DIR / f"{name}.yaml"
-    if not path.exists():
-        path = _THEME_DIR / f"{_DEFAULT_THEME}.yaml"
     data = yaml.safe_load(path.read_text()) or {}
     data.setdefault("name", name)
     data.setdefault("tokens", {})
@@ -132,14 +132,24 @@ def render_theme_css(theme: dict) -> str:
         # Allow only simple custom-property names to avoid broken CSS/injection.
         if (not key) or any(not (c.isalnum() or c in "-_") for c in key):
             continue
-        val = str(value).replace("\n", " ").replace("\r", " ")
+        # Sanitize values to avoid breaking out of the declaration / <style> context.
+        val = (
+            str(value)
+            .replace("\n", " ")
+            .replace("\r", " ")
+            .replace(";", " ")
+            .replace("}", " ")
+            .replace("<", " ")
+            .replace(">", " ")
+            .strip()
+        )
         safe_lines.append(f"  --{key}: {val};")
 
     lines = "\n".join(safe_lines)
 
     import_url = (theme.get("import_url") or "").strip()
     # Avoid breaking out of the quoted @import string.
-    if any(c in import_url for c in ('"', "'", "\n", "\r")):
+    if any(c in import_url for c in ('"', "'", "\n", "\r", "<", ">")):
         import_url = ""
 
     import_rule = f'@import url("{import_url}");\n' if import_url else ""
