@@ -40,19 +40,15 @@ from omegaconf import DictConfig, OmegaConf
 
 # Project-specific imports
 from open_apps.apps.start_page.main import initialize_routes_and_configure_task
+from open_apps.preview import open_preview
 from open_apps.tasks.add_tasks_to_browsergym import register_tasks_with_browsergym
 from open_apps.tasks.tasks import Task
 from open_apps.utils import merge_plus_keys
 
-try:
-    # Register the custom 'now' resolver
-    OmegaConf.register_resolver(
-        "now",
-        lambda format_str="%Y-%m-%d_%H-%M-%S": datetime.now().strftime(format_str),
-    )
-except AssertionError:
-    # resolver already registered, ignore
-    pass
+# Note: the "now" interpolation resolver (used as ${now:...} in the configs)
+# is provided by Hydra's own setup at run/compose time, so we don't register
+# one here. (A local registration previously lived here but was shadowed by
+# Hydra's and never actually ran.)
 
 
 class OpenAppsLauncher:
@@ -205,6 +201,14 @@ class OpenAppsLauncher:
 
         initialize_routes_and_configure_task(self.config.apps)
 
+        # Open a window on the apps, sized like `config/device/`. Off whenever
+        # something other than a person is driving: `headless=True` is passed
+        # by launch_apps_via_shell (agent runs) and by save_screenshots.py,
+        # both of which bring their own browser.
+        if not self.config.get("headless", False):
+            url = f"http://{self.web_app_host}:{self.web_app_port}/"
+            open_preview(url, self.config.get("device"))
+
         serve(
             appname="launch",
             reload=False,
@@ -227,7 +231,7 @@ class OpenAppsLauncher:
             f"source '{venv_activate_script}' && "
             f"cd '{file_dir}' && "
             f"uv run launch.py --config-path '{config_dir_for_subprocess}' "
-            f"--config-name '{config_name_for_subprocess}' use_wandb=False"
+            f"--config-name '{config_name_for_subprocess}' use_wandb=False headless=True"
         )
         if self.config.apps.onlineshop.enable:
             command += " apps.onlineshop.enable=True"
@@ -311,8 +315,12 @@ class AgentLauncher(OpenAppsLauncher):
             [
                 i,
                 str(step_info.action),
-                str(step_info.obs["open_pages_urls"]),
-                str(step_info.agent_info.get("think")),
+                str(step_info.obs.get("open_pages_urls") if step_info.obs else None),
+                str(
+                    step_info.agent_info.get("think")
+                    if step_info.agent_info
+                    else None
+                ),
             ]
             for i, step_info in enumerate(exp_result.steps_info)
         ]

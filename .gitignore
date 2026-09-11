@@ -199,3 +199,9 @@ CLAUDE.md
 tests/generated_screenshots/.runtime/*
 
 internal-*
+
+# Generated desktop wallpaper. Deterministic -- a pure function of
+# (variant, width, height) -- so it is regenerated on demand rather than
+# committed; see open_apps.wallpaper. Keeping a binary out of git also keeps
+# it out of the public remotes' history.
+src/open_apps/apps/assets/img/desktop-*.png
