@@ -14,17 +14,40 @@ backwards compatibility.
 
 from __future__ import annotations
 
+import logging
+import time
+
 import requests
 
+logger = logging.getLogger(__name__)
 
-def safe_get_json(url: str):
-    """GET ``url`` and parse JSON. Returns ``[]`` on any request failure."""
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException:
-        return []
+
+def safe_get_json(url: str, retries: int = 3, backoff: float = 0.5):
+    """GET ``url`` and parse JSON. Returns ``[]`` on persistent request failure.
+
+    Transient failures (connection blips, a server that is still starting)
+    are retried ``retries`` times with exponential backoff (``backoff``,
+    ``2 * backoff``, ... seconds). The fallback is logged as a warning --
+    callers that score reward diffs off this state should treat a logged
+    fallback as "probe failed", not "app is empty".
+    """
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                time.sleep(backoff * (2**attempt))
+    logger.warning(
+        "GET %s failed after %d attempt(s): %s; returning []",
+        url,
+        retries,
+        last_exc,
+    )
+    return []
 
 
 def get_current_state(url: str) -> dict:
@@ -35,8 +58,8 @@ def get_current_state(url: str) -> dict:
 
     Returns:
         Dict keyed by app name (todo, calendar, map, messenger,
-        codeeditor, online_shop) whose values are the JSON the
-        corresponding ``/<app>_all`` endpoints return.
+        codeeditor, openbanking, online_shop) whose values are the JSON
+        the corresponding ``/<app>_all`` endpoints return.
     """
     state: dict = {}
     state["todo"] = safe_get_json(url + "/todo_all")
@@ -44,6 +67,7 @@ def get_current_state(url: str) -> dict:
     state["map"] = safe_get_json(url + "/maps/landmarks")
     state["messenger"] = safe_get_json(url + "/messages_all")
     state["codeeditor"] = safe_get_json(url + "/codeeditor_all")
+    state["openbanking"] = safe_get_json(url + "/openbanking_all") or {}
     try:
         state["online_shop"] = safe_get_json(url + "/onlineshop_all")
     except Exception:

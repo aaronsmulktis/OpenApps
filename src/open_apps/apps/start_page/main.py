@@ -87,6 +87,10 @@ AVAILABLE_APPS = {
         "open_apps.apps.map_app",
         "get_map_routes",
     ),
+    "openbanking": (
+        "open_apps.apps.openbanking_app",
+        "get_openbanking_routes",
+    ),
 }
 
 APP_MODULE_TO_NAME = {
@@ -95,6 +99,7 @@ APP_MODULE_TO_NAME = {
     "open_apps.apps.messenger_app": "messenger",
     "open_apps.apps.codeeditor_app": "code_editor",
     "open_apps.apps.map_app": "maps",
+    "open_apps.apps.openbanking_app": "openbanking",
 }
 
 

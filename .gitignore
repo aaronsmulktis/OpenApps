@@ -199,3 +199,8 @@ CLAUDE.md
 tests/generated_screenshots/.runtime/*
 
 internal-*
+
+# Saved third-party pages used as design reference while building an app.
+# Never committed: two of this checkout's three remotes are public, and a
+# vendor's saved page carries their markup, stylesheets and fonts.
+.reference-*

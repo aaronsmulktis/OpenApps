@@ -83,3 +83,9 @@ apps:
     enabled: true
     position: 6
     clickable_logo: false
+  openbanking:
+    icon: ${apps.start_page.icon_path}/wallet.png
+    bw_icon: ${apps.start_page.bw_icon_path}/wallet.png
+    enabled: true
+    position: 7
+    clickable_logo: false
