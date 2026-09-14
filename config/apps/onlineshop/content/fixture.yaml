@@ -2,7 +2,7 @@
 
 # The catalog the test suite runs against. Not a storefront.
 #
-# The shop's real catalog is `webshop.yaml`: 200 products of scraped Amazon
+# The shop's real catalog is `webshop.yaml`: 999 products of scraped Amazon
 # marketing copy, regenerated wholesale by `scripts/fetch_webshop.py` and
 # hotlinking an image CDN. Assertions need something smaller and stable that
 # no regeneration can move, so this file supplies one.

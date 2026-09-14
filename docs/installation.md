@@ -42,7 +42,7 @@ is there:
 uv run launch.py apps/onlineshop/content=webshop         # shop at /onlineshop
 ```
 
-`config/apps/onlineshop/content/webshop.yaml` holds 200 products converted
+`config/apps/onlineshop/content/webshop.yaml` holds 999 products converted
 from the [WebShop](https://github.com/princeton-nlp/WebShop) item dump. The
 catalog is a property of the `content` pack, not of the app, so a pack with an
 empty `products` list still yields no `/onlineshop` route and no start-page
@@ -74,12 +74,12 @@ of the item dump.
 # category distribution. Writes nothing.
 uv run scripts/fetch_webshop.py --inspect
 
-# Default run: 200 products from items_shuffle_1000.json -- i.e. rebuilds the
-# committed pack as it stands.
+# Default run: the whole of items_shuffle_1000.json -- i.e. rebuilds the
+# committed pack as it stands (999 products; one source record has no title).
 uv run scripts/fetch_webshop.py
 
 # A bigger catalog, from the full 1.18M-product dump (~1.5 GB download).
-uv run scripts/fetch_webshop.py --file items_shuffle.json --limit 2000
+uv run scripts/fetch_webshop.py --file items_shuffle.json --limit 5000
 
 # Populate star ratings when the chosen dump has none. Off by default: the
 # values are derived from the sku, so they are stable but invented.
@@ -93,7 +93,7 @@ uv run scripts/fetch_webshop.py --out /tmp/webshop.yaml
 | --- | --- | --- |
 | `--inspect` | off | Print the real schema and exit without writing |
 | `--file` | first of `items_shuffle_1000.json`, `items_human_ins.json`, `items_shuffle.json` | Which dump in the HF repo to convert |
-| `--limit` | `200` | Products to keep |
+| `--limit` | `1000` | Products to keep (the committed pack's size; also all of `items_shuffle_1000.json`) |
 | `--synth-ratings` | off | Derive stable ratings from the sku when the data has none |
 | `--out` | `config/apps/onlineshop/content/webshop.yaml` | Destination |
 
@@ -240,8 +240,8 @@ It prints how many titles matched a keyword versus fell back to their
 category, and tints the fallbacks on the page so they are easy to pick out:
 
 ```
---> Wrote /tmp/glyphs.html (177 kB, 200 products)
-    113 matched a glyph keyword, 87 fell back to their category default (tinted)
+--> Wrote /tmp/glyphs.html (2748 kB, 999 products)
+    531 matched a glyph keyword, 468 fell back to their category default (tinted)
 ```
 
 #### Hotlinked product photos

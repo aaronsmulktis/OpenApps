@@ -14,12 +14,12 @@ is checked in, so a fresh clone has a working storefront:
 
 This script is the generator behind that file, kept for the cases where the
 committed catalog is the wrong one: a different item dump, more products than
-the default 200, ratings where the source has none. It overwrites the pack in
-place, so a regeneration discards any hand-edits.
+the 1000 of `items_shuffle_1000.json`, ratings where the source has none. It
+overwrites the pack in place, so a regeneration discards any hand-edits.
 
     uv run scripts/fetch_webshop.py --inspect      # look, write nothing
-    uv run scripts/fetch_webshop.py                # rebuild the pack
-    uv run scripts/fetch_webshop.py --limit 2000 --file items_shuffle.json
+    uv run scripts/fetch_webshop.py                # rebuild the pack as-is
+    uv run scripts/fetch_webshop.py --limit 5000 --file items_shuffle.json
 
 Source: https://huggingface.co/datasets/YWZBrandon/webshop-data, a mirror of
 the item dump from WebShop (Yao et al., 2022, princeton-nlp/WebShop). The
@@ -480,8 +480,11 @@ def main() -> int:
                         help="print the dataset's real schema and write nothing")
     parser.add_argument("--file", help=f"item dump to use (default: first of "
                                        f"{', '.join(CANDIDATE_FILES)})")
-    parser.add_argument("--limit", type=int, default=200,
-                        help="products to keep (default: 200)")
+    # Matches the committed pack, so a bare run rebuilds it rather than
+    # quietly replacing it with a smaller one. 1000 is also the whole of
+    # `items_shuffle_1000.json`; going higher needs `--file items_shuffle.json`.
+    parser.add_argument("--limit", type=int, default=1000,
+                        help="products to keep (default: 1000)")
     parser.add_argument("--synth-ratings", action="store_true",
                         help="derive stable ratings from the sku when the "
                              "dataset has none (invented data; off by default)")
