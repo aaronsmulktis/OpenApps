@@ -185,20 +185,15 @@ def initialize_routes_and_configure_task(config: DictConfig = None):
 
     java_version_high_enough = get_java_version().startswith("21")
 
-    # The shop used to be gated on OpenJDK 21, because its search ran through
-    # a Lucene index via pyserini. Search is now SQLite FTS5, so there is no
-    # native dependency left -- but the catalog is the WebShop dump, which is
-    # not redistributed here. Without it there is nothing to sell, so the shop
-    # is left unregistered rather than served as an empty storefront: an app
-    # that is absent is a clearer signal than one that renders zero products.
-    # Maps still needs Java for the OTP routing server, which is what
-    # `java_version_high_enough` is for below.
+    # A `content` pack with no products leaves the shop unregistered rather
+    # than served as an empty storefront: an app that is absent is a clearer
+    # signal than one that renders zero products. `default` is such a pack --
+    # chrome only -- so a shop needs an explicit catalog selection.
     if not app.config.onlineshop.enable:
         print("---> Online shop is disabled in the config.")
     elif not onlineshop_has_catalog(app.config):
-        print("---> Online shop has no catalog, skipping it. Run "
-              "`uv run scripts/fetch_webshop.py` to build one, then launch "
-              "with `apps/onlineshop/content=webshop`.")
+        print("---> Online shop has no catalog, skipping it. Launch with "
+              "`apps/onlineshop/content=webshop` for the full catalog.")
     else:
         print("---> Online shop turned on!!")
         AVAILABLE_APPS["onlineshop"] = (

@@ -10,9 +10,7 @@
 3) Install `playwright install chromium`
 
 That is the whole installation. **Every app runs from `uv sync` with no
-further setup** — no JDK and no model weights. The one exception is the online
-shop, which needs a catalog before it appears; see
-[The online shop](#the-online-shop) below. Launch with:
+further setup** — no downloads and no model weights. Launch with:
 
 ```
 uv run launch.py
@@ -128,17 +126,12 @@ own line art: the eval nodes have no outbound network, and
 something fixed to run against. It is not meant as a storefront, but
 `apps/onlineshop/content=fixture` will give you a working shop offline.
 
-/// details | It used to need OpenJDK 21 too
+/// details | It used to need a download step
 
-Earlier versions were a port of Princeton's WebShop that fetched the same
-dataset from Google Drive with `gdown` and searched it through a Lucene index
-built by `pyserini` — a JNI binding, hence the JDK — plus a spaCy model for a
-reward function.
-
-Search is now SQLite FTS5, so the JDK and `setup_pyserini.sh` are gone, and
-the Google Drive links the old `setup.sh` used are dead. `scripts/fetch_webshop.py`
-replaced that download with the HuggingFace mirror, and its output is now
-committed, so the download is no longer part of getting the shop running.
+Earlier versions were a port of Princeton's WebShop that fetched the item dump
+from Google Drive with `gdown` at setup time, plus a spaCy model for a reward
+function. Those links are dead, and the catalog is checked in now, so there is
+no download between `uv sync` and a working shop.
 ///
 
 ### Varying the shop
@@ -325,9 +318,8 @@ are computed from.
 | Reward surface | `GET /onlineshop_all` → `{"cart": [...], "orders": [...]}` |
 
 Search is the part worth knowing about. FTS5 is compiled into Python's
-`sqlite3` module, so BM25 ranking costs no dependency at all — that is what
-replaced Lucene. User input is tokenised and each token quoted before being
-OR-ed into a `MATCH` expression, so FTS5 operators typed into the search box
-(`*`, `NEAR`, a stray quote) are matched literally instead of being executed.
-Tokens are OR-ed rather than AND-ed so a query returns its best partial
-matches, which is how the Lucene-backed original behaved.
+`sqlite3` module, so BM25 ranking costs no dependency at all. User input is
+tokenised and each token quoted before being OR-ed into a `MATCH` expression,
+so FTS5 operators typed into the search box (`*`, `NEAR`, a stray quote) are
+matched literally instead of being executed. Tokens are OR-ed rather than
+AND-ed so a query returns its best partial matches.

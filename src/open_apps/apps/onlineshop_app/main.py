@@ -7,19 +7,18 @@ LICENSE file in the root directory of this source tree.
 """The OpenApps online shop.
 
 A rewrite of the original port of Princeton's WebShop (Yao et al., 2022). The
-previous implementation needed OpenJDK 21 and a ~1000-product dataset pulled
-from Google Drive by ``setup.sh``: products were searched through a Lucene
-index built by ``pyserini``, which is a JNI binding and hence the JDK. None of
-that is reachable on an offline eval node, so the app shipped disabled.
+previous implementation needed a native search index and a product dataset
+pulled from Google Drive by ``setup.sh`` at install time, neither of which is
+reachable on an offline eval node, so the app shipped disabled.
 
 What replaced it:
 
 * **Catalog** -- seeded from ``config/apps/onlineshop/content/*.yaml`` like
   every other app, so ``content`` becomes a real variation axis (german,
   long_descriptions, adversarial_descriptions, ...) instead of a fixed scrape.
-* **Search** -- SQLite FTS5 with its built-in ``bm25()`` ranking. Same family
-  of ranking function Lucene provided, no JDK, no extra dependency: FTS5 is
-  compiled into the ``sqlite3`` module in every supported interpreter here.
+* **Search** -- SQLite FTS5 with its built-in ``bm25()`` ranking, at no
+  dependency cost: FTS5 is compiled into the ``sqlite3`` module in every
+  supported interpreter here.
 * **Persistence** -- one SQLite file of ordinary relational tables. The old
   code kept the cart in memory and mirrored it to ``cart.json`` /
   ``orders.json``, keying order lines by a *stringified Python tuple*
@@ -136,8 +135,28 @@ styles = Style("""
         flex-wrap: wrap;
         margin-bottom: 1rem;
     }
-    .shop-bar form { display: flex; gap: var(--space); flex: 1 1 320px; margin: 0; }
-    .shop-bar input[type="search"], .shop-bar input[type="text"] { margin: 0; }
+    .shop-bar form {
+        display: flex;
+        gap: var(--space);
+        /* Grow into the space between the nav links and the cart, but stop
+           before the field turns into a full-width banner on a wide viewport. */
+        flex: 1 1 320px;
+        max-width: 34rem;
+        margin: 0;
+    }
+    /* Without `flex: 1` the field keeps its intrinsic ~150px and the form's
+       grown width becomes dead space between "Search" and "Cart".
+       `min-width: 0` lets it shrink below that intrinsic size when the bar is
+       narrow, instead of forcing a wrap. */
+    .shop-bar input[type="search"], .shop-bar input[type="text"] {
+        margin: 0;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    /* Cart and orders sit together at the far end, so the gap the form does
+       not claim opens between the search and the cart rather than inside the
+       form. */
+    .shop-bar > a.btn + form + a.btn { margin-left: auto; }
     .shop-promo {
         background-color: var(--color-surface);
         border: 1px solid var(--color-border);
@@ -280,6 +299,33 @@ styles = Style("""
     .cart-line { display: flex; gap: 0.8rem; align-items: center; }
     .cart-line .product-thumb { flex: 0 0 72px; }
     .cart-line-body { flex: 1 1 auto; }
+    /* Three separate forms (update / remove / toggle), so they cannot share a
+       row without a wrapper. Stacked and end-aligned with a shared button
+       width they read as one control group instead of three ragged blocks. */
+    .cart-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.4rem;
+        flex: 0 0 auto;
+    }
+    /* `stretch`, not `center`: a number input is ~9px shorter than a .btn at
+       the same font size, so centring them leaves two different-sized boxes
+       on one row. Stretching pins the input to the button's height whatever
+       the theme does to font metrics. */
+    .cart-actions form { display: flex; align-items: stretch; gap: 0.4rem; margin: 0; }
+    .cart-actions .btn { min-width: 7rem; }
+    .cart-actions input[type="number"] { margin: 0; width: 4.5rem; }
+    /* The item page's buy row: quantity and the primary CTA on one line,
+       sized to their content rather than to the form's full width. */
+    .product-buy {
+        display: flex;
+        align-items: stretch;
+        gap: 0.5rem;
+        margin-top: 0.8rem;
+    }
+    .product-buy input[type="number"] { margin: 0; width: 4.5rem; }
+    .shop-footer { margin-top: 1rem; }
     .cart-total { font-size: 1.2rem; font-weight: 700; color: var(--color-fg); }
     .muted { color: var(--color-muted); }
     .pagination { display: flex; gap: 0.6rem; align-items: center; margin-top: 1rem; }
@@ -392,8 +438,8 @@ def _build_fts():
         "sku UNINDEXED, title, bullets, description, options)"
     )
     for product in products():
-        # Option values are indexed as well, matching the document the original
-        # built for Lucene (title + description + first bullet + option text),
+        # Option values are indexed as well, matching the document the
+        # original indexed (title + description + first bullet + option text),
         # so a search for "walnut" or "espresso" finds products offering it.
         option_text = " ".join(
             f"{name} {' '.join(values)}"
@@ -556,8 +602,8 @@ def _fts_match_query(text: str) -> str | None:
 
     Tokens are quoted and OR-ed: quoting keeps FTS5 operators in user input
     (``*``, ``NEAR``, an unbalanced quote) from being interpreted or raising,
-    and OR rather than AND matches how the Lucene-backed original behaved --
-    a query returns its best partial matches instead of nothing.
+    and OR rather than AND matches how the original behaved -- a query returns
+    its best partial matches instead of nothing.
     """
     tokens = re.findall(r"[0-9a-z]+", (text or "").lower())
     if not tokens:
@@ -897,8 +943,11 @@ def page_shell(*content):
         styles,
         logo_title_container,
         *content,
-        A("Return to List of Apps", href="/", role="button", cls="contrast",
-          style="margin-top: 1rem;"),
+        # Own row: as a bare inline element it shared a line with whatever CTA
+        # a page ended on (checkout, "Browse products") at a different
+        # margin-top, so the two sat on visibly different baselines.
+        Div(A("Return to List of Apps", href="/", role="button", cls="contrast"),
+            cls="shop-footer"),
     )
 
 
@@ -1114,9 +1163,12 @@ def get(sku: str, keywords: str = ""):
                 P(extra, cls="muted") if extra else "",
                 Form(
                     *option_inputs,
-                    Input(type="number", name="quantity", value="1", min="1", max="99",
-                          aria_label="Quantity", style="max-width: 7rem;"),
-                    Button("Add to Cart", cls="btn btn-primary", type="submit"),
+                    Div(
+                        Input(type="number", name="quantity", value="1", min="1",
+                              max="99", aria_label="Quantity"),
+                        Button("Add to Cart", cls="btn btn-primary", type="submit"),
+                        cls="product-buy",
+                    ),
                     action=f"/onlineshop/cart/add/{product.sku}",
                     method="post",
                 ),
@@ -1214,8 +1266,7 @@ def cart_line(row):
             Div(
                 Form(
                     Input(type="number", name="quantity", value=str(row.quantity),
-                          min="1", max="99", aria_label=f"Quantity for {product.title}",
-                          style="max-width: 6rem;"),
+                          min="1", max="99", aria_label=f"Quantity for {product.title}"),
                     Button("Update", cls="btn btn-accent", type="submit"),
                     action=f"/onlineshop/cart/quantity/{row.id}",
                     method="post",
@@ -1231,6 +1282,7 @@ def cart_line(row):
                     action=f"/onlineshop/cart/toggle/{row.id}",
                     method="post",
                 ),
+                cls="cart-actions",
             ),
             cls="cart-line",
         ),

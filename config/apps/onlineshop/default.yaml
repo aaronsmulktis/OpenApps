@@ -19,14 +19,11 @@ theme: null
 
 # --- Behaviour -------------------------------------------------------------
 
-# The shop used to be gated behind an OpenJDK 21 install (Lucene, via
-# pyserini) as well as its dataset. Search is now SQLite FTS5 and the catalog
-# is checked in, so neither gate remains and this is once again the single
-# switch: `enable=False` hides the shop outright.
+# `enable=False` hides the shop outright.
 #
-# One subtlety survives. The shop is hidden rather than broken when it has
-# nothing to sell, so a `content` pack with an empty catalog also hides it --
-# `default` is exactly that, chrome with no products. Pick the catalog with
+# One subtlety: the shop is hidden rather than broken when it has nothing to
+# sell, so a `content` pack with an empty catalog also hides it -- `default`
+# is exactly that, chrome with no products. Pick the catalog with
 # `apps/onlineshop/content=webshop`. See `content/default.yaml`.
 enable: True
 
