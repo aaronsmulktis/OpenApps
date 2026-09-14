@@ -35,19 +35,38 @@ app, and the map app's browsing and saved places, work without it.
 
 ## The online shop
 
-**The shop ships with no catalog, so it does not appear until you build one.**
-Until then there is no `/onlineshop` route and no tile on the start page — the
-app is absent rather than empty. One optional script fixes that:
+**The catalog is checked in — there is no setup step.** Select it and the shop
+is there:
 
 ```bash
-uv run scripts/fetch_webshop.py                          # build the catalog
 uv run launch.py apps/onlineshop/content=webshop         # shop at /onlineshop
 ```
 
-The script downloads the [WebShop](https://github.com/princeton-nlp/WebShop)
-item dump from
+`config/apps/onlineshop/content/webshop.yaml` holds 200 products converted
+from the [WebShop](https://github.com/princeton-nlp/WebShop) item dump. The
+catalog is a property of the `content` pack, not of the app, so a pack with an
+empty `products` list still yields no `/onlineshop` route and no start-page
+tile — the app is absent rather than empty. `default` is exactly that pack, so
+launching without a `content=` selection gives you no shop.
+
+That pack also sets `product_images: hotlink`, because it is the one catalog
+whose image URLs point at real photos. Its pages therefore reference Amazon's
+CDN. On a node without egress the images fail silently while the page still
+returns 200, so for eval runs there:
+
+```bash
+uv run launch.py apps/onlineshop/content=webshop \
+  apps.onlineshop.product_images=glyphs
+```
+
+### Rebuilding the catalog
+
+`scripts/fetch_webshop.py` generated the committed pack and can regenerate it
+— a different dump, more products, synthesized ratings. Nothing requires it to
+run, and it overwrites `webshop.yaml` in place, discarding hand-edits. It
+pulls from
 [a HuggingFace mirror](https://huggingface.co/datasets/YWZBrandon/webshop-data)
-and converts it into a `webshop` content pack.
+of the item dump.
 
 ```bash
 # Look before you write: prints the dataset's file list, the keys actually
@@ -55,7 +74,8 @@ and converts it into a `webshop` content pack.
 # category distribution. Writes nothing.
 uv run scripts/fetch_webshop.py --inspect
 
-# Default run: 200 products from items_shuffle_1000.json.
+# Default run: 200 products from items_shuffle_1000.json -- i.e. rebuilds the
+# committed pack as it stands.
 uv run scripts/fetch_webshop.py
 
 # A bigger catalog, from the full 1.18M-product dump (~1.5 GB download).
@@ -117,7 +137,8 @@ reward function.
 
 Search is now SQLite FTS5, so the JDK and `setup_pyserini.sh` are gone, and
 the Google Drive links the old `setup.sh` used are dead. `scripts/fetch_webshop.py`
-replaces that download with the HuggingFace mirror.
+replaced that download with the HuggingFace mirror, and its output is now
+committed, so the download is no longer part of getting the shop running.
 ///
 
 ### Varying the shop
@@ -296,7 +317,7 @@ are computed from.
 
 | Concern | Implementation |
 | --- | --- |
-| Catalog | Seeded from the Hydra `content` pack into the `products` table on launch; built by `scripts/fetch_webshop.py` |
+| Catalog | Seeded from the Hydra `content` pack into the `products` table on launch; the `webshop` pack is checked in, regenerable with `scripts/fetch_webshop.py` |
 | Search | SQLite **FTS5** with its built-in `bm25()`, weighted title > options > bullets > description |
 | Persistence | One SQLite file, four relational tables, via `fastlite` |
 | Rendering | FastHTML against the shared design tokens (`apps/theme=`) with a `layout` group |

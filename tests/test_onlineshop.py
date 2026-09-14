@@ -27,11 +27,11 @@ from open_apps.apps.start_page.main import onlineshop_has_catalog
 def build_client(tmp_path, overrides=None):
     """Compose a config, seed the shop from it, and return a client.
 
-    The shipped `default` content pack has an empty catalog on purpose -- the
-    real one is the WebShop dump, downloaded per-machine by
-    `scripts/fetch_webshop.py` and never committed. So every test runs against
-    `content=fixture`, the small mechanical catalog, unless it is deliberately
-    exercising a different pack.
+    The shipped `default` content pack has an empty catalog on purpose, and
+    `webshop` -- the real one -- is 200 products of scraped marketing copy
+    that hotlinks an image CDN. Neither is something to assert against, so
+    every test runs on `content=fixture`, the small mechanical catalog, unless
+    it is deliberately exercising a different pack.
     """
     overrides = list(overrides or [])
     if not any(o.startswith("apps/onlineshop/content=") for o in overrides):

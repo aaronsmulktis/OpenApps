@@ -4,10 +4,8 @@
 #
 # This used to also download the online shop's product dataset from Google
 # Drive and a spaCy model for its reward function. The shop now searches with
-# SQLite FTS5, so it needs no JDK -- but it still needs a catalog, which is a
-# separate optional step and a Python script rather than part of this one:
-#
-#     uv run scripts/fetch_webshop.py
+# SQLite FTS5 and ships its catalog in the repo, so it needs nothing from this
+# script -- launch it with `apps/onlineshop/content=webshop`.
 #
 # The map app still shells out to OpenTripPlanner (`otp-2.6.0-shaded.jar`),
 # which is Java, so the JDK install moved here from the shop's directory.

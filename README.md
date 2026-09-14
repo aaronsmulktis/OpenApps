@@ -57,22 +57,25 @@ Learn more about to customize the content and appearance of apps in the [docs](h
 
 ## The online shop
 
-The shop ships with **no catalog**, so it does not appear until you build one
-— no route, no tile. One optional script downloads the
-[WebShop](https://github.com/princeton-nlp/WebShop) item dump and converts it
-into a content pack:
+Pick a catalog and the shop is there — no setup step, no download:
 
 ```bash
-uv run scripts/fetch_webshop.py                   # build the catalog
 uv run launch.py apps/onlineshop/content=webshop  # shop at /onlineshop
 uv run launch.py apps.onlineshop.enable=False     # turn it off entirely
 ```
 
-The generated pack is gitignored on purpose: those records are scraped Amazon
-listings, so they stay on the machine that downloaded them rather than being
-redistributed from here. Product images are dropped on import — the shop draws
-its own line art, and no page reaches the network. See
-[Installation](docs/installation.md) for the flags, and for the small
+The `webshop` pack is a 200-product catalog converted from the
+[WebShop](https://github.com/princeton-nlp/WebShop) item dump and checked in.
+Those records are scraped Amazon listings, so the titles and marketing copy
+are the retailer's own, and the pack hotlinks their CDN images rather than
+drawing line art — which means its pages reach the network. On an eval node
+without egress the images silently fail to load, so pass
+`apps.onlineshop.product_images=glyphs` there and the shop draws its own SVG
+art instead. Every other content pack already defaults to `glyphs`.
+
+`scripts/fetch_webshop.py` regenerates the pack if you want a different dump
+or more than 200 products; nothing requires it to run. See
+[Installation](docs/installation.md) for its flags, and for the small
 mechanical `fixture` catalog the tests use.
 
 It varies like every other app, with a `layout` axis of its own:
@@ -101,7 +104,8 @@ and `orders` to give a run some starting state. Each product is nine fields —
 them on every launch and every reset. Write your own pack to swap the catalog
 wholesale; `scripts/fetch_webshop.py` is just a generator for one.
 
-**The glyphs.** Thumbnails are drawn, not fetched: a keyword table maps the
+**The glyphs.** Outside the `webshop` pack, thumbnails are drawn rather than
+fetched: a keyword table maps the
 product title to one of ~35 hand-written SVG line-art shapes, tinted by a hue
 derived from the sku so a product looks the same on every page. Titles that
 match nothing fall back to a per-category glyph. To see the whole catalog's
@@ -111,13 +115,16 @@ art on one page:
 uv run scripts/render_glyph_sheet.py && open /tmp/glyphs.html
 ```
 
-**Real photos, optionally.** The catalog keeps each product's image URLs, and
+**Real photos.** The catalog keeps each product's image URLs, and
 `apps.onlineshop.product_images=hotlink` renders them — as a CSS-only carousel
 when a product has several, falling back to the glyph when an image fails to
-load. It is **off by default**: the eval nodes have no outbound network, so
-hotlinked images silently do not arrive while the page still returns 200, and
-a screenshot-scored agent ends up graded on an observation that lost its
-imagery. Turn it on for local browsing.
+load. The `webshop` pack sets this itself, since it is the one catalog whose
+URLs point at real images; the shop-wide default stays `glyphs`. The reason it
+is a per-pack opt-in rather than the global default: eval nodes have no
+outbound network, so hotlinked images silently do not arrive while the page
+still returns 200, and a screenshot-scored agent ends up graded on an
+observation that lost its imagery. For eval runs on the real catalog, pass
+`apps.onlineshop.product_images=glyphs`.
 
 See [Installation](docs/installation.md#the-online-shop) for both scripts'
 flags, the seed schema in full, and how to extend the keyword table.
@@ -201,7 +208,7 @@ Our apps are built on top of several excellent frameworks:
 - FastHTML [framework](https://github.com/AnswerDotAI/fasthtml) and [examples](https://github.com/AnswerDotAI/fasthtml-example) which allowed us to build fully functional apps in Python, the language most familiar to AI researchers.
 - [Browser Gym](https://github.com/ServiceNow/BrowserGym/blob/main/LICENSE) and [AgentLab](https://github.com/ServiceNow/AgentLab/blob/main/LICENSE):
 - Open Street Maps: https://www.openstreetmap.org/copyright for our Maps apps.
-- our online shop descends from [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md), developed by Princeton University. The application has been rewritten and shares none of WebShop's code. Its catalog is still WebShop's item dump, which `scripts/fetch_webshop.py` downloads on request; that data is not redistributed as part of this repository.
+- our online shop descends from [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md), developed by Princeton University. The application has been rewritten and shares none of WebShop's code. Its catalog, `config/apps/onlineshop/content/webshop.yaml`, is a 200-product subset of WebShop's item dump converted into our own schema and checked in here; the records originate as scraped Amazon listings, and the pack also carries links to Amazon's image CDN. `scripts/fetch_webshop.py` regenerates it from the [source mirror](https://huggingface.co/datasets/YWZBrandon/webshop-data).
 
 Some icons are have been designed using resources from Flaticon.com
 

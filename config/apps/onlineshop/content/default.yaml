@@ -2,12 +2,12 @@
 
 # Shop chrome only -- no catalog.
 #
-# The shop deliberately ships with zero products. Its catalog is the WebShop
-# item dump (scraped Amazon listings), which is not redistributed with this
-# repository, so there is nothing here to seed from until the optional setup
-# script has been run:
+# This pack is the storefront's settings without any products: the labels,
+# the category strip, the currency. It is the base the real catalogs layer
+# onto (`webshop.yaml` and the translation/adversarial packs all
+# `defaults: [default]`), and on its own it yields a shop with nothing to
+# sell. For an actual storefront:
 #
-#     uv run scripts/fetch_webshop.py
 #     uv run launch.py apps/onlineshop/content=webshop
 #
 # With an empty catalog the start page does not register the shop's routes and

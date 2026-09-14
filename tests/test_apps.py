@@ -104,12 +104,11 @@ class TestApps:
         assert response_json["transactions"]
 
     def test_onlineshop_is_absent_without_a_catalog(self, client):
-        """The shop ships with no products, so by default it does not exist.
+        """The default content pack has no products, so the shop is absent.
 
-        Its catalog is the WebShop item dump, which is scraped Amazon data and
-        is therefore downloaded by `scripts/fetch_webshop.py` instead of being
-        committed. Until that has run there is nothing to sell, and the start
-        page leaves the routes unregistered rather than serving an empty
+        A catalog is a deliberate choice of `content` pack -- `webshop` for
+        the real one -- and `default` is chrome only. With nothing to sell the
+        start page leaves the routes unregistered rather than serving an empty
         storefront. See `tests/test_onlineshop.py` for the shop's behaviour
         once a catalog is present.
         """
