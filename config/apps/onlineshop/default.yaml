@@ -1,4 +1,9 @@
+# `_self_` first, so these are the app's baseline and a `content` or `layout`
+# pack can override them. Without it Hydra composes this file last and the
+# baseline silently wins -- which is how `webshop.yaml`'s `product_images`
+# would be discarded. The packs otherwise set a disjoint set of keys.
 defaults:
+  - _self_
   - content: default
   - layout: default
 
@@ -13,13 +18,14 @@ database_path: ${databases_dir}/onlineshop.db
 theme: null
 
 # The shop used to be gated behind an OpenJDK 21 install (Lucene, via
-# pyserini) as well as its dataset. Search is now SQLite FTS5, so the native
-# dependency is gone and this flag is on -- but the catalog still has to be
-# built by `scripts/fetch_webshop.py` before the shop appears, because the
-# `default` content pack ships empty. See `content/default.yaml`.
+# pyserini) as well as its dataset. Search is now SQLite FTS5 and the catalog
+# is checked in, so neither gate remains and this is once again the single
+# switch: `enable=False` hides the shop outright.
 #
-# So: `enable=False` hides the shop outright; leaving it True and skipping the
-# setup script also hides it, until a catalog exists.
+# One subtlety survives. The shop is hidden rather than broken when it has
+# nothing to sell, so a `content` pack with an empty catalog also hides it --
+# `default` is exactly that, chrome with no products. Pick the catalog with
+# `apps/onlineshop/content=webshop`. See `content/default.yaml`.
 enable: True
 
 allowed_credit_cards:
