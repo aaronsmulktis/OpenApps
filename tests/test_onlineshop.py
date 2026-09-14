@@ -98,7 +98,7 @@ class TestSearch:
         assert "furn-desk-205" in skus  # walnut is a finish option, not in the text
 
     def test_partial_match_still_returns_results(self, client):
-        """Tokens are OR-ed, as the Lucene-backed original behaved."""
+        """Tokens are OR-ed, so a query returns its best partial matches."""
         assert shop.search_products("coffee unicorn") != []
 
     def test_fts_operators_in_user_input_are_not_executed(self, client):

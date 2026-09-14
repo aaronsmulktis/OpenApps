@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Puts the OpenJDK 21 installed by setup.sh on PATH, for the map app's
-# OpenTripPlanner route-planning server. The online shop no longer needs Java.
+# OpenTripPlanner route-planning server -- the only part of OpenApps that
+# needs a JDK.
 
 # Check if the script is being sourced
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

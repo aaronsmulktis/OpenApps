@@ -2,14 +2,9 @@
 #
 # Optional setup: installs OpenJDK 21 for the map app's route planning.
 #
-# This used to also download the online shop's product dataset from Google
-# Drive and a spaCy model for its reward function. The shop now searches with
-# SQLite FTS5 and ships its catalog in the repo, so it needs nothing from this
-# script -- launch it with `apps/onlineshop/content=webshop`.
-#
-# The map app still shells out to OpenTripPlanner (`otp-2.6.0-shaded.jar`),
-# which is Java, so the JDK install moved here from the shop's directory.
-# Skip this script entirely if you do not need `apps.maps.allow_planning`.
+# The map app shells out to OpenTripPlanner (`otp-2.6.0-shaded.jar`), which is
+# Java. Nothing else in OpenApps needs a JDK, so skip this script entirely if
+# you do not need `apps.maps.allow_planning`.
 
 set -euo pipefail
 
