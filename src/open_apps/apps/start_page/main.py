@@ -150,13 +150,14 @@ def initialize_routes_and_configure_task(config: DictConfig = None):
 
     # A `content` pack with no products leaves the shop unregistered rather
     # than served as an empty storefront: an app that is absent is a clearer
-    # signal than one that renders zero products. `default` is such a pack --
-    # chrome only -- so a shop needs an explicit catalog selection.
+    # signal than one that renders zero products. The default pack is
+    # `webshop`, so reaching this branch means an empty pack was asked for.
     if not app.config.onlineshop.enable:
         print("---> Online shop is disabled in the config.")
     elif not onlineshop_has_catalog(app.config):
-        print("---> Online shop has no catalog, skipping it. Launch with "
-              "`apps/onlineshop/content=webshop` for the full catalog.")
+        print("---> Online shop has no catalog, skipping it. The selected "
+              "`content` pack has no products; the default `webshop` pack "
+              "has 999.")
     else:
         print("---> Online shop turned on!!")
         AVAILABLE_APPS["onlineshop"] = (

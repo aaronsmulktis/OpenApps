@@ -33,29 +33,34 @@ app, and the map app's browsing and saved places, work without it.
 
 ## The online shop
 
-**The catalog is checked in — there is no setup step.** Select it and the shop
-is there:
+**The catalog is checked in and selected by default — there is no setup step.**
 
 ```bash
-uv run launch.py apps/onlineshop/content=webshop         # shop at /onlineshop
+uv run launch.py                                         # shop at /onlineshop
 ```
 
 `config/apps/onlineshop/content/webshop.yaml` holds 999 products converted
-from the [WebShop](https://github.com/princeton-nlp/WebShop) item dump. The
-catalog is a property of the `content` pack, not of the app, so a pack with an
-empty `products` list still yields no `/onlineshop` route and no start-page
-tile — the app is absent rather than empty. `default` is exactly that pack, so
-launching without a `content=` selection gives you no shop.
-
-That pack also sets `product_images: hotlink`, because it is the one catalog
-whose image URLs point at real photos. Its pages therefore reference Amazon's
-CDN. On a node without egress the images fail silently while the page still
-returns 200, so for eval runs there:
+from the [WebShop](https://github.com/princeton-nlp/WebShop) item dump, and is
+the shop's default `content` pack. The catalog is a property of that pack
+rather than of the app, so selecting a pack with an empty `products` list
+yields no `/onlineshop` route and no start-page tile — the app is absent
+rather than empty:
 
 ```bash
-uv run launch.py apps/onlineshop/content=webshop \
-  apps.onlineshop.product_images=glyphs
+uv run launch.py apps/onlineshop/content=default         # no shop
 ```
+
+The `webshop` pack also sets `product_images: hotlink`, because it is the one
+catalog whose image URLs point at real photos. **The default configuration
+therefore references Amazon's CDN.** On a node without egress the images fail
+silently while the page still returns 200, so for eval runs there:
+
+```bash
+uv run launch.py apps.onlineshop.product_images=glyphs
+```
+
+`tests/test_no_egress.py` records this as the one content-driven entry in its
+external-host allowlist; every other entry is a styling dependency.
 
 ### Rebuilding the catalog
 
@@ -243,9 +248,8 @@ The generated pack keeps each product's image URLs in an `images` list, and
 `apps.onlineshop.product_images` chooses what gets drawn:
 
 ```bash
-uv run launch.py apps/onlineshop/content=webshop                          # glyphs (default)
-uv run launch.py apps/onlineshop/content=webshop \
-                 apps.onlineshop.product_images=hotlink                   # real photos
+uv run launch.py                                                          # real photos (default)
+uv run launch.py apps.onlineshop.product_images=glyphs                    # SVG line art
 ```
 
 Under `hotlink`, a product with several images becomes a carousel: one hidden
