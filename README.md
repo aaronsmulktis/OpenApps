@@ -64,7 +64,7 @@ uv run launch.py apps/onlineshop/content=webshop  # shop at /onlineshop
 uv run launch.py apps.onlineshop.enable=False     # turn it off entirely
 ```
 
-The `webshop` pack is a 200-product catalog converted from the
+The `webshop` pack is a 999-product catalog converted from the
 [WebShop](https://github.com/princeton-nlp/WebShop) item dump and checked in.
 Those records are scraped Amazon listings, so the titles and marketing copy
 are the retailer's own, and the pack hotlinks their CDN images rather than
@@ -74,7 +74,7 @@ without egress the images silently fail to load, so pass
 art instead. Every other content pack already defaults to `glyphs`.
 
 `scripts/fetch_webshop.py` regenerates the pack if you want a different dump
-or more than 200 products; nothing requires it to run. See
+or more products; nothing requires it to run. See
 [Installation](docs/installation.md) for its flags, and for the small
 mechanical `fixture` catalog the tests use.
 
@@ -94,8 +94,9 @@ is a content variation axis like any other text in OpenApps. Search is SQLite
 costs no dependency. State lives in four plain tables (`products`,
 `cart_items`, `orders`, `order_items`) and is served as JSON at
 `/onlineshop_all`, which is what rewards are computed from. Pages are FastHTML
-rendered against the shared design tokens, and product images are generated
-inline SVG, so the app makes no outbound requests.
+rendered against the shared design tokens. Product images are generated inline
+SVG under the default `glyphs` mode, so the app makes no outbound requests;
+the `webshop` catalog opts into hotlinking real photos instead.
 
 **The product seed.** A content pack lists `products`, plus an optional `cart`
 and `orders` to give a run some starting state. Each product is nine fields —
@@ -208,7 +209,7 @@ Our apps are built on top of several excellent frameworks:
 - FastHTML [framework](https://github.com/AnswerDotAI/fasthtml) and [examples](https://github.com/AnswerDotAI/fasthtml-example) which allowed us to build fully functional apps in Python, the language most familiar to AI researchers.
 - [Browser Gym](https://github.com/ServiceNow/BrowserGym/blob/main/LICENSE) and [AgentLab](https://github.com/ServiceNow/AgentLab/blob/main/LICENSE):
 - Open Street Maps: https://www.openstreetmap.org/copyright for our Maps apps.
-- our online shop descends from [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md), developed by Princeton University. The application has been rewritten and shares none of WebShop's code. Its catalog, `config/apps/onlineshop/content/webshop.yaml`, is a 200-product subset of WebShop's item dump converted into our own schema and checked in here; the records originate as scraped Amazon listings, and the pack also carries links to Amazon's image CDN. `scripts/fetch_webshop.py` regenerates it from the [source mirror](https://huggingface.co/datasets/YWZBrandon/webshop-data).
+- our online shop descends from [WebShop](https://github.com/princeton-nlp/WebShop/blob/master/LICENSE.md), developed by Princeton University. The application has been rewritten and shares none of WebShop's code. Its catalog, `config/apps/onlineshop/content/webshop.yaml`, is a 999-product subset of WebShop's item dump (the whole of `items_shuffle_1000.json`, less one record with an empty title) converted into our own schema and checked in here; the records originate as scraped Amazon listings, and the pack also carries links to Amazon's image CDN. `scripts/fetch_webshop.py` regenerates it from the [source mirror](https://huggingface.co/datasets/YWZBrandon/webshop-data).
 
 Some icons are have been designed using resources from Flaticon.com
 
