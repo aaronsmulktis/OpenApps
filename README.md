@@ -57,21 +57,32 @@ Learn more about to customize the content and appearance of apps in the [docs](h
 
 ## The online shop
 
-Pick a catalog and the shop is there — no setup step, no download:
+The shop is on by default — no setup step, no download, no flags:
 
 ```bash
-uv run launch.py apps/onlineshop/content=webshop  # shop at /onlineshop
+uv run launch.py                                  # shop at /onlineshop
 uv run launch.py apps.onlineshop.enable=False     # turn it off entirely
+uv run launch.py apps/onlineshop/content=default  # shop chrome, no products
 ```
 
-The `webshop` pack is a 999-product catalog converted from the
+The default `webshop` pack is a 999-product catalog converted from the
 [WebShop](https://github.com/princeton-nlp/WebShop) item dump and checked in.
 Those records are scraped Amazon listings, so the titles and marketing copy
 are the retailer's own, and the pack hotlinks their CDN images rather than
-drawing line art — which means its pages reach the network. On an eval node
-without egress the images silently fail to load, so pass
-`apps.onlineshop.product_images=glyphs` there and the shop draws its own SVG
-art instead. Every other content pack already defaults to `glyphs`.
+drawing line art.
+
+**This means the default configuration reaches the network.** On an eval node
+without egress the images silently fail to load while the page still returns
+200, so a screenshot-scored agent gets graded on an observation that quietly
+lost its imagery. Pass `apps.onlineshop.product_images=glyphs` there and the
+shop draws its own SVG art instead:
+
+```bash
+uv run launch.py apps.onlineshop.product_images=glyphs
+```
+
+Every other content pack (`german`, `fixture`, `adversarial_descriptions`, …)
+stays on `glyphs`.
 
 `scripts/fetch_webshop.py` regenerates the pack if you want a different dump
 or more products; nothing requires it to run. See

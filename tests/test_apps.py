@@ -103,20 +103,18 @@ class TestApps:
         assert response_json["accounts"]
         assert response_json["transactions"]
 
-    def test_onlineshop_is_absent_without_a_catalog(self, client):
-        """The default content pack has no products, so the shop is absent.
+    def test_onlineshop_is_present_by_default(self, client):
+        """The shipped default is `content=webshop`, so the shop is there.
 
-        A catalog is a deliberate choice of `content` pack -- `webshop` for
-        the real one -- and `default` is chrome only. With nothing to sell the
-        start page leaves the routes unregistered rather than serving an empty
-        storefront. See `tests/test_onlineshop.py` for the shop's behaviour
-        once a catalog is present.
+        The catalog is committed, so no setup step stands between a clean
+        checkout and a storefront. `tests/test_onlineshop.py::TestCatalogGate`
+        covers the other side -- a `content` pack with no products leaves the
+        routes unregistered rather than serving an empty shop.
         """
-        assert client.get("/onlineshop").status_code == 404
+        assert client.get("/onlineshop").status_code == 200
 
-    def test_homepage_hides_the_shop_tile_without_a_catalog(self, client):
-        """A tile for unregistered routes would just 404 the user."""
-        assert 'href="/onlineshop"' not in client.get("/").text
+    def test_homepage_shows_the_shop_tile(self, client):
+        assert 'href="/onlineshop"' in client.get("/").text
 
 
 class TestTasks:

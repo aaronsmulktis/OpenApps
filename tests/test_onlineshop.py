@@ -366,9 +366,19 @@ class TestCatalogGate:
                 overrides=[f"logs_dir={tmp_path}"] + list(overrides or []),
             ).apps
 
-    def test_shipped_config_has_no_catalog(self, tmp_path):
-        """`content=default` is chrome only -- see config/.../content/default.yaml."""
-        assert not onlineshop_has_catalog(self._apps_config(tmp_path))
+    def test_shipped_config_has_a_catalog(self, tmp_path):
+        """The shipped default is `content=webshop`, so the shop opens."""
+        assert onlineshop_has_catalog(self._apps_config(tmp_path))
+
+    def test_the_empty_pack_is_still_reachable(self, tmp_path):
+        """`content=default` is chrome only -- see config/.../content/default.yaml.
+
+        No longer the default, but it is what the gate exists for and what the
+        translation/adversarial packs layer onto, so it has to keep answering
+        False.
+        """
+        config = self._apps_config(tmp_path, ["apps/onlineshop/content=default"])
+        assert not onlineshop_has_catalog(config)
 
     def test_a_content_pack_with_products_opens_the_shop(self, tmp_path):
         config = self._apps_config(tmp_path, ["apps/onlineshop/content=fixture"])

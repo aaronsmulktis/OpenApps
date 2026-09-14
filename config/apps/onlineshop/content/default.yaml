@@ -6,9 +6,12 @@
 # the category strip, the currency. It is the base the real catalogs layer
 # onto (`webshop.yaml` and the translation/adversarial packs all
 # `defaults: [default]`), and on its own it yields a shop with nothing to
-# sell. For an actual storefront:
+# sell -- which hides the app entirely.
 #
-#     uv run launch.py apps/onlineshop/content=webshop
+# `webshop` is the default pack, so selecting this one is how you ask for a
+# shop with no catalog:
+#
+#     uv run launch.py apps/onlineshop/content=default
 #
 # With an empty catalog the start page does not register the shop's routes and
 # does not show its tile -- the app is absent rather than broken. See

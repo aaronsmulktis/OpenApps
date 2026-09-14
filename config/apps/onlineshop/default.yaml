@@ -4,7 +4,12 @@
 # would be discarded. The packs otherwise set a disjoint set of keys.
 defaults:
   - _self_
-  - content: default
+  # The real catalog, so a bare `uv run launch.py` gets a working storefront
+  # with no flags. It carries `product_images: hotlink`, which means the
+  # default configuration references Amazon's image CDN -- see that pack, and
+  # pass `apps.onlineshop.product_images=glyphs` on a node without egress.
+  # `content=default` is still the chrome-only pack, now an explicit choice.
+  - content: webshop
   - layout: default
 
 # A single SQLite file, like the other apps. The previous implementation wrote
@@ -22,9 +27,9 @@ theme: null
 # `enable=False` hides the shop outright.
 #
 # One subtlety: the shop is hidden rather than broken when it has nothing to
-# sell, so a `content` pack with an empty catalog also hides it -- `default`
-# is exactly that, chrome with no products. Pick the catalog with
-# `apps/onlineshop/content=webshop`. See `content/default.yaml`.
+# sell, so a `content` pack with an empty catalog also hides it. That is no
+# longer the default path -- it takes an explicit
+# `apps/onlineshop/content=default`. See `content/default.yaml`.
 enable: True
 
 allowed_credit_cards:

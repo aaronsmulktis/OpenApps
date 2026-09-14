@@ -44,6 +44,7 @@ ROUTES = [
     "/messages",
     "/codeeditor/",
     "/maps",
+    "/onlineshop",
     "/openbanking",
     "/openbanking/accounts/0",
 ]
@@ -64,6 +65,12 @@ ALLOWED_EXTERNAL_HOSTS = {
     "/messages": {"cdn.jsdelivr.net", "cdn.tailwindcss.com", "cdnjs.cloudflare.com"},
     "/codeeditor/": {"cdn.jsdelivr.net", "cdn.tailwindcss.com"},
     "/maps": {"cdnjs.cloudflare.com", "unpkg.com"},          # leaflet + awesome-markers
+    # Unlike every other entry here, this is content rather than a styling
+    # dependency: the default `content=webshop` pack sets
+    # `product_images: hotlink`, so each product renders its own Amazon photo.
+    # Drops out under `apps.onlineshop.product_images=glyphs`, which is what
+    # an eval node without egress should pass.
+    "/onlineshop": {"m.media-amazon.com"},
     # Styled entirely from theme tokens and one inline stylesheet, so it starts
     # in the goal state. Keep it there: the bank's face comes from
     # config/apps/theme/openbanking.yaml, which deliberately ships no
