@@ -133,7 +133,7 @@ styles = Style("""
         gap: var(--space);
         align-items: center;
         flex-wrap: wrap;
-        margin-bottom: 1rem;
+        margin: 0 auto 1rem auto;
     }
     .shop-bar form {
         display: flex;
@@ -969,10 +969,12 @@ def search_bar(value: str = ""):
                 placeholder="Search products",
                 value=value,
                 aria_label="Search products",
+                style="height: auto"
             ),
-            Button("Search", cls="btn btn-primary", type="submit"),
+            Button("Search", cls="btn btn-primary", type="submit", style="margin-bottom: 0 !important"),
             action="/onlineshop/search",
             method="post",
+            style="height: 50px"
         ),
         A(f"Cart ({count})" if count else "Cart",
           href="/onlineshop/cart", cls="btn btn-neutral", role="button"),
