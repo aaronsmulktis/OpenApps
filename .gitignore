@@ -199,3 +199,6 @@ CLAUDE.md
 tests/generated_screenshots/.runtime/*
 
 internal-*
+
+# Watchman drops these probe files into every watched directory.
+.watchman-cookie-*
