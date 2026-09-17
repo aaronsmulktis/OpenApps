@@ -14,6 +14,8 @@ graceful *fallback* (an unknown theme name degrades to the default instead
 of raising).
 """
 
+import pathlib
+
 from fasthtml.common import to_xml
 from omegaconf import OmegaConf
 
@@ -58,15 +60,26 @@ class TestTokenVocabulary:
     button rather than a loud failure.
     """
 
-    THEMES = [
-        "default", "dark", "mono", "challenging_font",
-        "colorblind", "solarized", "material", "bootstrap",
-    ]
+    # Globbed, not hardcoded: a theme added to the group is covered without
+    # anyone remembering to list it here, which is the whole point of the check.
+    THEMES = sorted(
+        p.stem
+        for p in (
+            pathlib.Path(__file__).resolve().parents[1] / "config" / "apps" / "theme"
+        ).glob("*.yaml")
+    )
 
     def test_all_themes_declare_the_default_vocabulary(self):
+        """Superset, not equality -- a theme may add its own tokens.
+
+        `vscode_dark` and the `meta` pair carry editor and brand tokens the
+        shared vocabulary has no need for. What must not happen is a theme
+        *missing* one, since an app will still emit `var(--that-token)`.
+        """
         expected = set(load_theme("default")["tokens"])
         for name in self.THEMES:
-            assert set(load_theme(name)["tokens"]) == expected, name
+            missing = expected - set(load_theme(name)["tokens"])
+            assert not missing, f"{name} is missing {sorted(missing)}"
 
     def test_dark_theme_is_actually_dark(self):
         """Regression: `dark` was a port of todo's local variant and had a
