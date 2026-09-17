@@ -32,10 +32,23 @@ theme: null
 # `apps/onlineshop/content=default`. See `content/default.yaml`.
 enable: True
 
+# --- Payment ---------------------------------------------------------------
+
+# With the check on, checkout asks for a card number, expiry, CVV and
+# cardholder name and matches them against a credit card seeded in the
+# OpenBanking app, which also holds the available credit the purchase is
+# authorized against. Turn it off for a shop that takes any order.
+enable_credit_card_check: true
+
+# Card networks this shop accepts, matched against the `card_brand` of the card
+# on file -- not against anything the shopper types. An empty list accepts
+# every brand the bank knows about.
 allowed_credit_cards:
-  - 'Visa'
-  - 'MasterCard'
-enable_credit_card_check: false
+  - 'Meridian'
+
+# What the charge is called in the bank's ledger. `{order_id}` is substituted
+# with the shop's order id, so a ledger row can be traced back to an order.
+card_descriptor: 'OPENAPPS SHOP {order_id}'
 
 # Products per page in listings and search results.
 products_per_page: 10

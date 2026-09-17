@@ -21,7 +21,19 @@ from hydra import compose, initialize
 from starlette.testclient import TestClient
 
 from open_apps.apps.onlineshop_app import main as shop
+from open_apps.apps.openbanking_app import main as bank
 from open_apps.apps.start_page.main import onlineshop_has_catalog
+
+# The credit card seeded in `config/apps/openbanking/content/default.yaml`.
+# Checkout matches every field against that record, so a test that wants a
+# successful purchase has to type what the bank actually has on file.
+GOOD_CARD = {
+    "card_number": "9024007155992043",
+    "card_expiry": "09/29",
+    "card_cvv": "418",
+    "card_name": "Cardinal Freight LLC",
+}
+CARD_ACCOUNT_ID = 2
 
 
 def build_client(tmp_path, overrides=None):
@@ -32,6 +44,11 @@ def build_client(tmp_path, overrides=None):
     that hotlinks an image CDN. Neither is something to assert against, so
     every test runs on `content=fixture`, the small mechanical catalog, unless
     it is deliberately exercising a different pack.
+
+    The bank is seeded too. Checkout authorizes against a card held by
+    OpenBanking, and in a real run both apps are imported into one process by
+    the start page; here the shop's own test client has to stand the bank up
+    itself or every card payment would decline as unavailable.
     """
     overrides = list(overrides or [])
     if not any(o.startswith("apps/onlineshop/content=") for o in overrides):
@@ -44,6 +61,7 @@ def build_client(tmp_path, overrides=None):
     Path(config.logs_dir).mkdir(parents=True, exist_ok=True)
     Path(config.databases_dir).mkdir(parents=True, exist_ok=True)
     shop.set_environment(config.apps)
+    bank.set_environment(config.apps)
     return TestClient(shop.app)
 
 
@@ -208,7 +226,7 @@ class TestCheckout:
         )
 
         client.post("/onlineshop/checkout",
-                    data={"name": "Dana Reed", "address": "9 Mill Lane"})
+                    data={"name": "Dana Reed", "address": "9 Mill Lane", **GOOD_CARD})
 
         after = state(client)
         assert after["cart"] == []
@@ -221,7 +239,8 @@ class TestCheckout:
     def test_deselected_lines_stay_in_the_cart(self, client):
         row_id = [r.id for r in shop.cart_items()][0]
         client.post(f"/onlineshop/cart/toggle/{row_id}")
-        client.post("/onlineshop/checkout", data={"name": "A", "address": "B"})
+        client.post("/onlineshop/checkout",
+                    data={"name": "A", "address": "B", **GOOD_CARD})
 
         remaining = [line["sku"] for line in state(client)["cart"]]
         assert remaining == [shop._row(shop.cart_items, row_id).sku]
@@ -230,30 +249,81 @@ class TestCheckout:
         for row in shop.cart_items():
             client.post(f"/onlineshop/cart/toggle/{row.id}")
         before = len(state(client)["orders"])
-        client.post("/onlineshop/checkout", data={"name": "A", "address": "B"})
+        client.post("/onlineshop/checkout",
+                    data={"name": "A", "address": "B", **GOOD_CARD})
         assert len(state(client)["orders"]) == before
 
-    def test_rejected_card_does_not_create_an_order(self, tmp_path):
-        client = build_client(
-            tmp_path, ["apps.onlineshop.enable_credit_card_check=true"]
-        )
+    def test_good_card_creates_an_order_and_records_its_last_four(self, client):
         before = len(state(client)["orders"])
-        client.post(
-            "/onlineshop/checkout",
-            data={"name": "A", "address": "B", "card_type": "Diners Club"},
-        )
-        assert len(state(client)["orders"]) == before
+        client.post("/onlineshop/checkout",
+                    data={"name": "A", "address": "B", **GOOD_CARD})
+        orders = state(client)["orders"]
+        assert len(orders) == before + 1
+        assert orders[-1]["card_last4"] == "2043"
 
-    def test_allowed_card_creates_an_order(self, tmp_path):
-        client = build_client(
-            tmp_path, ["apps.onlineshop.enable_credit_card_check=true"]
-        )
+    def test_card_number_spacing_is_accepted(self, client):
+        """A shopper types the PAN the way it is printed, in four groups."""
         before = len(state(client)["orders"])
-        client.post(
-            "/onlineshop/checkout",
-            data={"name": "A", "address": "B", "card_type": "Visa"},
-        )
+        client.post("/onlineshop/checkout", data={
+            "name": "A", "address": "B", **GOOD_CARD,
+            "card_number": "9024 0071 5599 2043",
+        })
         assert len(state(client)["orders"]) == before + 1
+
+    @pytest.mark.parametrize("field,bad_value", [
+        ("card_number", "9024007155990000"),
+        ("card_expiry", "01/27"),
+        ("card_cvv", "999"),
+        ("card_name", "Someone Else"),
+    ])
+    def test_wrong_card_details_are_rejected(self, client, field, bad_value):
+        before = state(client)
+        response = client.post(
+            "/onlineshop/checkout",
+            data={"name": "A", "address": "B", **GOOD_CARD, field: bad_value},
+            follow_redirects=True,
+        )
+        after = state(client)
+        assert after["orders"] == before["orders"], f"{field} should not buy"
+        # The cart survives a decline -- a shopper gets to fix the number.
+        assert after["cart"] == before["cart"]
+        assert "declined" in response.text.lower()
+
+    def test_a_decline_does_not_touch_the_card(self, client):
+        headroom_before = bank.get_account(CARD_ACCOUNT_ID).available_credit
+        client.post("/onlineshop/checkout",
+                    data={"name": "A", "address": "B", **GOOD_CARD, "card_cvv": "000"})
+        assert bank.get_account(CARD_ACCOUNT_ID).available_credit == headroom_before
+
+    def test_purchase_debits_the_card(self, client):
+        card_before = bank.get_account(CARD_ACCOUNT_ID)
+        headroom_before = card_before.available_credit
+        owed_before = card_before.present_balance
+        total = round(sum(line["unit_price"] * line["quantity"]
+                          for line in state(client)["cart"]), 2)
+
+        client.post("/onlineshop/checkout",
+                    data={"name": "A", "address": "B", **GOOD_CARD})
+
+        card_after = bank.get_account(CARD_ACCOUNT_ID)
+        assert card_after.available_credit == round(headroom_before - total, 2)
+        assert card_after.present_balance == round(owed_before - total, 2)
+
+    def test_check_off_takes_any_order_and_records_no_card(self, tmp_path):
+        client = build_client(
+            tmp_path, ["apps.onlineshop.enable_credit_card_check=false"]
+        )
+        before = len(state(client)["orders"])
+        client.post("/onlineshop/checkout", data={"name": "A", "address": "B"})
+        orders = state(client)["orders"]
+        assert len(orders) == before + 1
+        assert orders[-1]["card_last4"] == ""
+
+    def test_checkout_form_asks_for_the_card_only_when_the_check_is_on(self, tmp_path):
+        on = build_client(tmp_path / "on", ["apps.onlineshop.enable_credit_card_check=true"])
+        assert 'name="card_cvv"' in on.get("/onlineshop/checkout").text
+        off = build_client(tmp_path / "off", ["apps.onlineshop.enable_credit_card_check=false"])
+        assert 'name="card_cvv"' not in off.get("/onlineshop/checkout").text
 
 
 class TestRewardState:
