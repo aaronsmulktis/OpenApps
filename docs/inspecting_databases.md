@@ -82,6 +82,7 @@ CREATE TABLE [account] (
    [credit_limit] FLOAT,
    [card_brand] TEXT,
    [card_expiration] TEXT,
+   [card_cvv] TEXT,              -- masked on the card face until revealed
    [statement_balance] FLOAT,
    [statement_close_date] TEXT,
    [minimum_payment] FLOAT,
@@ -108,6 +109,13 @@ Two things that surprise people:
   fields from a deposit account.
 - `transaction` is a SQL keyword, so it has to be quoted in every query:
   `SELECT ... FROM "transaction"`.
+- The bank is read-only from its own UI, with one exception: a purchase in the
+  online shop authorizes against a card here and posts to its ledger. Those
+  rows are pending (`date` and `balance` are `NULL`) and carry a negative
+  `position`, so they sort above the seeded ones without renumbering them. A
+  charge that used the `overlimit_grace` band posts a second, zero-amount row
+  naming the overage. See `apps.openbanking.overlimit_grace` and
+  `apps.onlineshop.enable_credit_card_check`.
 
 ## Reading it from the command line
 

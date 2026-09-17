@@ -13,3 +13,13 @@ database_path: ${databases_dir}/openbanking.db
 # here only if you want the bank to stay on-brand while the rest of the
 # environment varies.
 theme: null
+
+# --- Payments --------------------------------------------------------------
+
+# How far past a card's `available_credit` a purchase may still authorize, in
+# dollars. The grace band is what makes "check the balance before you buy" a
+# real decision rather than a hard wall: an agent that ignores the figure
+# mostly gets away with it, and the ledger records that it did.
+#
+# Set to 0 for a strict limit.
+overlimit_grace: 10.00
