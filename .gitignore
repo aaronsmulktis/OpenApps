@@ -205,3 +205,5 @@ internal-*
 # committed; see open_apps.wallpaper. Keeping a binary out of git also keeps
 # it out of the public remotes' history.
 src/open_apps/apps/assets/img/desktop-*.png
+# Watchman drops these probe files into every watched directory.
+.watchman-cookie-*

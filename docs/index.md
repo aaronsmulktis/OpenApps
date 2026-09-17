@@ -125,8 +125,10 @@ Available layouts: `todo` has `default` and `kanban_board`; `start_page` has
 
 #### Migrating from `appearance`
 
-The `appearance` group these two replaced was removed. Overrides written
-against it no longer resolve; translate them as:
+The `appearance` group these two replaced was removed: there are no
+`config/apps/<app>/appearance/` directories and no app renders from one.
+`apps/<app>/appearance=...` is a Hydra composition error, not a silent
+no-op. Translate overrides as:
 
 | Old override | New override |
 | --- | --- |
@@ -146,9 +148,27 @@ needed collapse to one `apps/theme=dark`. Two renderings shift slightly:
 the rest did not), and `colorblind` is now available to all apps rather than
 the code editor alone.
 
-To reproduce the numbers in [the paper](https://arxiv.org/abs/2511.20766)
-rather than port to the new axes, check out the `v1.0-paper` tag — the last
-tree with `appearance` intact.
+##### Reproducing the paper
+
+The paper's variation grid is indexed by `appearance` stem names, and the two
+axes above do not reproduce it pixel-for-pixel — see the shifts noted just
+above. **To reproduce the numbers in
+[the paper](https://arxiv.org/abs/2511.20766), use the `v1.0-paper` tag**, the
+last tree with `appearance` intact:
+
+```bash
+git checkout v1.0-paper
+uv run launch.py apps/todo/appearance=dark_theme
+```
+
+Theme and layout are the supported axes going forward; `v1.0-paper` is frozen
+and gets no fixes.
+
+One exception to the removal: the MCP `reconfigure` tool still accepts an
+`appearance=` argument, translates it onto `theme`/`layout` per the table
+above, and raises a `DeprecationWarning`. It exists so existing MCP clients
+keep working for one release and will be removed — see
+[`src/open_apps/mcp/README.md`](https://github.com/facebookresearch/OpenApps/blob/main/src/open_apps/mcp/README.md).
 
 #### Content
 

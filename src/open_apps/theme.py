@@ -79,9 +79,14 @@ def load_theme(name: str) -> dict:
     ``assets``. Falls back to the default theme when ``name`` is unknown so
     a bad override degrades gracefully instead of raising.
     """
+    # Two separate guards, both needed: the character check keeps a name from
+    # escaping _THEME_DIR (``../``, absolute paths), the existence check keeps
+    # a merely-unknown-but-well-formed name from raising FileNotFoundError.
     if not name or any(not (char.isalnum() or char in "-_") for char in name):
         name = _DEFAULT_THEME
     path = _THEME_DIR / f"{name}.yaml"
+    if not path.exists():
+        path = _THEME_DIR / f"{_DEFAULT_THEME}.yaml"
     data = yaml.safe_load(path.read_text()) or {}
     data.setdefault("name", name)
     data.setdefault("tokens", {})
