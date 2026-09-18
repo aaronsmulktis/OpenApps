@@ -95,3 +95,61 @@ uv run launch_agent.py agent=GPT-5-1 task_name=mark_water_plants_as_done__casual
 To run agents across **all** tasks and their goal variations in parallel, use
 the `config_parallel_tasks_across_goal_variations.yaml` config — see
 [Launch Agent(s) Across Multiple Tasks](index.md#launch-agents-across-multiple-tasks).
+
+## Cross-app purchase tasks
+
+`config/tasks/openbanking.yaml` is a standalone group, selected with
+`tasks=openbanking`. Most of it is read-then-act: OpenBanking is read-only, so
+the agent looks a figure up in the ledger and the scorable delta lands in
+todo/calendar/messenger.
+
+Two tasks in it are the other shape. The shop's checkout charges a card through
+the bank's one write path, so the reward is a delta in **two** app slices at
+once:
+
+```shell
+uv run launch_agent.py agent=GPT-5-1 \
+    tasks=openbanking task_name=buy_the_console_table_with_the_business_card
+```
+
+`BuyWithCardTask` builds a target in which the shop gained an order carrying the
+paying card's last four, and the bank gained a pending `Card` row that debits the
+headroom by exactly the order total. What makes it cross-app rather than a
+form-fill is that the card number, expiry and CVV live only on the card's page in
+OpenBanking, each masked until clicked, and checkout takes no order without all
+three.
+
+```yaml
+buy_the_console_table_with_the_business_card:
+  _target_: open_apps.tasks.tasks.BuyWithCardTask
+  goal: ...
+  sku: B06Y3VLDFB
+  unit_price: 877.8          # /onlineshop_all omits the catalog, so pin it here
+  quantity: 1
+  card_last4: '2043'         # matched on the order *and* on the debited account
+  ship_to_name: Dana Reyes
+  ship_to_address: 44 Wharf Street Portland ME 04101
+```
+
+Three things to know before writing one of your own:
+
+* `unit_price` has to match the catalog the run serves (`content=webshop` by
+  default), because the reward cannot look a price up. `descriptor` and
+  `charge_type` default to `apps.onlineshop.card_descriptor` and
+  `apps.openbanking.purchase_type`; override either at run time and the task
+  has to move with it.
+* A checkout mints a random order id and a wall-clock date, and the bank row's
+  description embeds that order id. `AppStateComparison` normalizes all three
+  away — but only when asked (`normalize_purchases`, which `CompositeTask` sets
+  itself when a sub-task buys), so every other task keeps failing on a spurious
+  order, ids and all.
+* Price the purchase inside the card's `available_credit`. A charge that needs
+  the `overlimit_grace` band still authorizes, but it posts a second ledger row
+  whose wording comes from the bank's content pack; `BuyWithCardTask` refuses to
+  build a target for one rather than score it half-right.
+
+`buy_the_console_table_and_log_the_charge` chains the purchase with an
+`AddToDoTask` in a `CompositeTask` — the todo has to name the headroom left
+*after* the charge, a figure that does not exist until the purchase posts. Note
+that `browsergym_env_args.max_steps` defaults to 10, which is not enough for
+either of these; raise it per-sweep.
