@@ -31,7 +31,12 @@ from starlette.testclient import TestClient
 
 from open_apps import config_dir
 from open_apps.apps.openbanking_app import main as bank
-from open_apps.tasks.tasks import AddToDoTask, BuyWithCardTask, CompositeTask
+from open_apps.tasks.tasks import (
+    AddToDoTask,
+    BuyWithCardTask,
+    CompositeTask,
+    DeclinedCardPurchaseTask,
+)
 
 from tests.test_onlineshop import GOOD_CARD, build_client
 
@@ -44,10 +49,34 @@ LAST4 = "2043"
 
 SHIP_TO = {"ship_to_name": "Dana Reyes", "ship_to_address": "44 Wharf Street"}
 
+# The seeded card's headroom, and the grace band `apps.openbanking` allows on
+# top of it. Both are asserted against the composed config in
+# `TestShippedTaskConfigs`, so a seed change breaks loudly rather than quietly
+# moving these tests into a different authorization band.
+HEADROOM = 8715.81
+GRACE = 10.0
+
+# 23 x 379.00 = 8717.00, which is 1.19 past the headroom and so inside the
+# grace band: the bank takes it and posts an OVERLIMIT NOTICE alongside.
+GRACE_SKU = "elec-mntr-002"
+GRACE_PRICE = 379.0
+GRACE_QTY = 23
+GRACE_OPTIONS = {"size": "27 inch"}
+GRACE_TITLE = "27-inch Monitor"
+
+# 20 x 899.00 = 17980.00, far past headroom + grace, so the charge is refused
+# and the app writes nothing at all.
+DECLINE_SKU = "furn-table-201"
+DECLINE_PRICE = 899.0
+DECLINE_QTY = 20
+DECLINE_TITLE = "Oak Dining Table"
+
 # The purchase tasks in `config/tasks/openbanking.yaml`.
 SHIPPED = [
     "buy_the_console_table_with_the_business_card",
     "buy_the_console_table_and_log_the_charge",
+    "buy_the_mirrors_just_over_the_card_limit",
+    "attempt_the_copier_far_over_the_card_limit",
 ]
 
 
@@ -92,6 +121,39 @@ def buy(shop_client, **overrides):
     return response
 
 
+def buy_expecting_decline(shop_client, **overrides):
+    """Check out expecting a refusal, and return where the shopper is sent.
+
+    A decline bounces back to `/onlineshop/checkout` with the reason in the
+    query string, rather than on to `/onlineshop/orders`. The cart survives
+    because the handler returns before it writes anything: it only clears the
+    lines it managed to turn into an order.
+    """
+    form = {"name": SHIP_TO["ship_to_name"], "address": SHIP_TO["ship_to_address"]}
+    form.update(GOOD_CARD)
+    form.update(overrides)
+    response = shop_client.post("/onlineshop/checkout", data=form, follow_redirects=False)
+    location = response.headers.get("location", "")
+    assert location.startswith("/onlineshop/checkout?error="), "checkout was accepted"
+    return location
+
+
+def clear_cart(shop_client):
+    """Empty the cart through the UI route, the way an agent giving up would.
+
+    `/onlineshop_all` deliberately omits the cart row id, so the ids come from
+    the shop module directly -- the same shortcut `cross_state` takes to reach
+    the bank.
+    """
+    from open_apps.apps.onlineshop_app import main as onlineshop
+
+    for row in list(onlineshop.cart_items()):
+        shop_client.post(
+            f"/onlineshop/cart/remove/{row.id}", follow_redirects=False
+        )
+    assert shop_client.get("/onlineshop_all").json()["cart"] == []
+
+
 def add_to_cart(shop_client, sku, quantity=1, **options):
     """Put a line in the cart the way the item page does."""
     form = {"quantity": quantity}
@@ -113,6 +175,19 @@ def shop(tmp_path):
     client = build_client(tmp_path, overrides=["apps.onlineshop.cart=[]"])
     assert client.get("/onlineshop_all").json()["cart"] == []
     add_to_cart(client, SKU, **OPTIONS)
+    return client
+
+
+@pytest.fixture
+def empty_shop(tmp_path):
+    """A shop with nothing in the cart at all.
+
+    The over-the-limit tests below put their own line in, at their own
+    quantity, and the declined one scores *on* the cart -- so a pre-seeded
+    line from the `shop` fixture would be part of the target.
+    """
+    client = build_client(tmp_path, overrides=["apps.onlineshop.cart=[]"])
+    assert client.get("/onlineshop_all").json()["cart"] == []
     return client
 
 
@@ -322,6 +397,231 @@ class TestComposite:
         ) is False
 
 
+class TestTheGraceBand:
+    """A charge a few dollars past the headroom, which the bank still takes.
+
+    The interesting half is the *second* ledger row: `authorize_card_purchase`
+    posts an OVERLIMIT NOTICE naming the overage, so a target that only knows
+    about the purchase itself fails the diff on a purchase that succeeded.
+    """
+
+    def grace_task(self, **overrides) -> BuyWithCardTask:
+        fields = {
+            "goal": "Buy 23 monitors on the business card.",
+            "sku": GRACE_SKU,
+            "unit_price": GRACE_PRICE,
+            "quantity": GRACE_QTY,
+            "card_last4": LAST4,
+            "options": GRACE_OPTIONS,
+            "overlimit_grace": GRACE,
+            **SHIP_TO,
+        }
+        fields.update(overrides)
+        return BuyWithCardTask(**fields)
+
+    def test_the_premise(self, empty_shop):
+        """The charge really does land in the band, not either side of it."""
+        total = round(GRACE_PRICE * GRACE_QTY, 2)
+        assert HEADROOM < total <= HEADROOM + GRACE
+
+    def test_a_purchase_inside_the_band_scores(self, empty_shop):
+        add_to_cart(empty_shop, GRACE_SKU, quantity=GRACE_QTY, **GRACE_OPTIONS)
+        initial = cross_state(empty_shop)
+        buy(empty_shop)
+        assert self.grace_task().check_if_task_is_complete(
+            initial, cross_state(empty_shop)
+        )
+
+    def test_the_bank_really_posts_the_overlimit_row(self, empty_shop):
+        """The premise the target rests on -- two rows, not one."""
+        add_to_cart(empty_shop, GRACE_SKU, quantity=GRACE_QTY, **GRACE_OPTIONS)
+        before = len(cross_state(empty_shop)["openbanking"]["transactions"])
+        buy(empty_shop)
+        txns = cross_state(empty_shop)["openbanking"]["transactions"]
+        assert len(txns) == before + 2
+        assert txns[-1]["type"] == "Fee"
+        assert "$1.19" in txns[-1]["description"]
+        assert txns[-1]["amount"] == 0.0
+        # Order matters: `/openbanking_all` sorts by id and the charge is
+        # inserted first, so the notice is last.
+        assert txns[-2]["amount"] == -round(GRACE_PRICE * GRACE_QTY, 2)
+
+    def test_a_target_without_the_notice_fails(self, empty_shop):
+        """Zero grace is the old behaviour: refuse rather than half-score."""
+        add_to_cart(empty_shop, GRACE_SKU, quantity=GRACE_QTY, **GRACE_OPTIONS)
+        initial = cross_state(empty_shop)
+        buy(empty_shop)
+        strict = self.grace_task(overlimit_grace=0.0)
+        with pytest.raises(ValueError, match="overlimit grace"):
+            strict.get_target_state(initial)
+        assert fails(
+            lambda: strict.check_if_task_is_complete(initial, cross_state(empty_shop))
+        ) is False
+
+    def test_the_wrong_overage_in_the_notice_fails(self, empty_shop):
+        add_to_cart(empty_shop, GRACE_SKU, quantity=GRACE_QTY, **GRACE_OPTIONS)
+        initial = cross_state(empty_shop)
+        buy(empty_shop)
+        current = cross_state(empty_shop)
+        current["openbanking"]["transactions"][-1]["description"] = (
+            "OVERLIMIT NOTICE - credit limit exceeded by $99.99"
+        )
+        assert fails(
+            lambda: self.grace_task().check_if_task_is_complete(initial, current)
+        ) is False
+
+    def test_doing_nothing_fails(self, empty_shop):
+        initial = cross_state(empty_shop)
+        assert fails(
+            lambda: self.grace_task().check_if_task_is_complete(
+                initial, cross_state(empty_shop)
+            )
+        ) is False
+
+    def test_past_the_band_refuses_a_target(self, empty_shop):
+        initial = cross_state(empty_shop)
+        with pytest.raises(ValueError, match="DeclinedCardPurchaseTask"):
+            self.grace_task(quantity=DECLINE_QTY, unit_price=DECLINE_PRICE)\
+                .get_target_state(initial)
+
+
+class TestADeclinedPurchase:
+    """Past the grace band the app writes nothing, so the cart is the reward."""
+
+    def declined_task(self, **overrides) -> DeclinedCardPurchaseTask:
+        fields = {
+            "goal": "Try to buy 20 oak tables on the business card.",
+            "sku": DECLINE_SKU,
+            "unit_price": DECLINE_PRICE,
+            "title": DECLINE_TITLE,
+            "quantity": DECLINE_QTY,
+            "card_last4": LAST4,
+            "overlimit_grace": GRACE,
+        }
+        fields.update(overrides)
+        return DeclinedCardPurchaseTask(**fields)
+
+    def test_the_premise(self):
+        total = round(DECLINE_PRICE * DECLINE_QTY, 2)
+        assert total > HEADROOM + GRACE
+
+    def test_a_refused_checkout_scores(self, empty_shop):
+        initial = cross_state(empty_shop)
+        add_to_cart(empty_shop, DECLINE_SKU, quantity=DECLINE_QTY)
+        buy_expecting_decline(empty_shop)
+        assert self.declined_task().check_if_task_is_complete(
+            initial, cross_state(empty_shop)
+        )
+
+    def test_the_app_really_wrote_nothing(self, empty_shop):
+        """What makes the cart the only scorable delta."""
+        initial = cross_state(empty_shop)
+        add_to_cart(empty_shop, DECLINE_SKU, quantity=DECLINE_QTY)
+        location = buy_expecting_decline(empty_shop)
+        current = cross_state(empty_shop)
+
+        assert "insufficient+available+credit" in location
+        assert current["online_shop"]["orders"] == initial["online_shop"]["orders"]
+        assert current["openbanking"] == initial["openbanking"]
+        assert current["online_shop"]["cart"][0]["quantity"] == DECLINE_QTY
+
+    def test_the_decline_does_not_name_the_shortfall(self, empty_shop):
+        """Why the reporting sub-task is worth points: the figure is not on
+        the page the agent is looking at when it fails."""
+        add_to_cart(empty_shop, DECLINE_SKU, quantity=DECLINE_QTY)
+        location = buy_expecting_decline(empty_shop)
+        page = empty_shop.get(location).text
+        for figure in ("12784", "8715.81", "8,715.81"):
+            assert figure not in location
+            assert figure not in page
+
+    def test_doing_nothing_fails(self, empty_shop):
+        """The failure mode the cart assertion exists to catch."""
+        initial = cross_state(empty_shop)
+        assert fails(
+            lambda: self.declined_task().check_if_task_is_complete(
+                initial, cross_state(empty_shop)
+            )
+        ) is False
+
+    def test_an_empty_cart_after_giving_up_fails(self, empty_shop):
+        initial = cross_state(empty_shop)
+        add_to_cart(empty_shop, DECLINE_SKU, quantity=DECLINE_QTY)
+        buy_expecting_decline(empty_shop)
+        clear_cart(empty_shop)
+        assert fails(
+            lambda: self.declined_task().check_if_task_is_complete(
+                initial, cross_state(empty_shop)
+            )
+        ) is False
+
+    def test_the_wrong_quantity_fails(self, empty_shop):
+        initial = cross_state(empty_shop)
+        add_to_cart(empty_shop, DECLINE_SKU, quantity=DECLINE_QTY - 1)
+        buy_expecting_decline(empty_shop)
+        assert fails(
+            lambda: self.declined_task().check_if_task_is_complete(
+                initial, cross_state(empty_shop)
+            )
+        ) is False
+
+    def test_a_charge_that_would_be_approved_refuses_a_target(self, empty_shop):
+        initial = cross_state(empty_shop)
+        with pytest.raises(ValueError, match="BuyWithCardTask"):
+            self.declined_task(quantity=1).get_target_state(initial)
+
+    def test_a_charge_inside_the_grace_band_refuses_a_target(self, empty_shop):
+        """The boundary: the bank takes this one, so it is not this task."""
+        initial = cross_state(empty_shop)
+        with pytest.raises(ValueError, match="BuyWithCardTask"):
+            self.declined_task(
+                sku=GRACE_SKU, unit_price=GRACE_PRICE, quantity=GRACE_QTY,
+                title=GRACE_TITLE,
+            ).get_target_state(initial)
+
+    def test_the_shortfall_is_the_figure_the_todo_asks_for(self, empty_shop):
+        initial = cross_state(empty_shop)
+        expected = round(DECLINE_PRICE * DECLINE_QTY - HEADROOM, 2)
+        assert self.declined_task().shortfall(initial) == expected
+
+    def test_the_composite_needs_both_halves(self, empty_shop):
+        initial = cross_state(empty_shop)
+        shortfall = self.declined_task().shortfall(initial)
+        composite = CompositeTask(
+            goal="Try to buy it, then log how far short the card fell.",
+            subtasks=[
+                self.declined_task(),
+                AddToDoTask(
+                    goal="Log the shortfall.",
+                    todo_name=f"Card short {shortfall}",
+                    is_done=False,
+                ),
+            ],
+        )
+
+        add_to_cart(empty_shop, DECLINE_SKU, quantity=DECLINE_QTY)
+        buy_expecting_decline(empty_shop)
+        # The decline alone is not enough.
+        assert fails(
+            lambda: composite.check_if_task_is_complete(initial, cross_state(empty_shop))
+        ) is False
+
+        current = cross_state(empty_shop)
+        current["todo"] = [{"title": f"Card short {shortfall}", "done": False}]
+        assert composite.check_if_task_is_complete(initial, current)
+
+    def test_buying_it_on_a_card_that_could_pay_fails_the_composite(self, empty_shop):
+        """A run that somehow completes the purchase is not a pass."""
+        initial = cross_state(empty_shop)
+        add_to_cart(empty_shop, DECLINE_SKU, quantity=1)
+        buy(empty_shop)
+        assert fails(
+            lambda: self.declined_task(quantity=1).check_if_task_is_complete(
+                initial, cross_state(empty_shop)
+            )
+        ) is False
+
+
 class TestShippedTaskConfigs:
     """The two configs in `config/tasks/openbanking.yaml` agree with the apps.
 
@@ -363,6 +663,64 @@ class TestShippedTaskConfigs:
         catalog = {p.sku: p for p in apps_cfg.apps.onlineshop.products}
         assert cfg.sku in catalog, "the default catalog no longer carries this sku"
         assert catalog[cfg.sku].price == cfg.unit_price
+
+    def test_the_test_constants_match_the_seeded_card(self, apps_cfg):
+        """`HEADROOM` and `GRACE` at the top of this file are the real thing."""
+        card = next(
+            a
+            for a in apps_cfg.apps.openbanking.accounts
+            if a.get("kind") == "credit_card"
+        )
+        assert card.available_credit == HEADROOM
+        assert apps_cfg.apps.openbanking.overlimit_grace == GRACE
+
+    def test_the_over_limit_products_are_in_the_default_catalog(
+        self, tasks_cfg, apps_cfg
+    ):
+        """Both figures and the copier's title are pinned, so a catalog
+        regeneration has to break here rather than silently rescore."""
+        catalog = {p.sku: p for p in apps_cfg.apps.onlineshop.products}
+        grace = tasks_cfg["buy_the_mirrors_just_over_the_card_limit"]
+        declined = tasks_cfg["attempt_the_copier_far_over_the_card_limit"].subtasks[0]
+
+        for cfg in (grace, declined):
+            assert cfg.sku in catalog, f"{cfg.sku} is no longer in the catalog"
+            assert catalog[cfg.sku].price == cfg.unit_price
+
+        # The declined task carries the title too -- `/onlineshop_all` joins it
+        # onto the cart line the refused checkout leaves behind.
+        assert catalog[declined.sku].title.strip() == declined.title.strip()
+
+    def test_the_mirrors_land_inside_the_grace_band(self, tasks_cfg, apps_cfg):
+        cfg = tasks_cfg["buy_the_mirrors_just_over_the_card_limit"]
+        card = next(
+            a
+            for a in apps_cfg.apps.openbanking.accounts
+            if a.get("kind") == "credit_card"
+        )
+        grace = apps_cfg.apps.openbanking.overlimit_grace
+        total = round(cfg.unit_price * cfg.quantity, 2)
+        over_by = round(total - card.available_credit, 2)
+
+        assert cfg.overlimit_grace == grace, "task and app disagree on the band"
+        assert 0 < over_by <= grace, f"{total} is not inside the grace band"
+
+    def test_the_copier_lands_past_the_grace_band(self, tasks_cfg, apps_cfg):
+        composite = tasks_cfg["attempt_the_copier_far_over_the_card_limit"]
+        purchase, todo = composite.subtasks
+        card = next(
+            a
+            for a in apps_cfg.apps.openbanking.accounts
+            if a.get("kind") == "credit_card"
+        )
+        grace = apps_cfg.apps.openbanking.overlimit_grace
+        total = round(purchase.unit_price * purchase.quantity, 2)
+        over_by = round(total - card.available_credit, 2)
+
+        assert purchase.overlimit_grace == grace
+        assert over_by > grace, f"{total} would still authorize"
+        # The todo names the shortfall the agent has to compute for itself.
+        assert f"{over_by:.2f}" in todo.todo_name
 
     def test_the_card_can_afford_it(self, tasks_cfg, apps_cfg):
         cfg = tasks_cfg["buy_the_console_table_with_the_business_card"]

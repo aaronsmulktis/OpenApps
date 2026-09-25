@@ -19,6 +19,19 @@ from omegaconf import OmegaConf
 ORDER_ID_TOKEN = "{order_id}"
 
 
+def _fmt_money(value: float) -> str:
+    """Mirror of ``openbanking_app.main.fmt_money``.
+
+    Inlined rather than imported for the same reason as
+    ``_NAV_APP_URL_PREFIXES`` below: the tasks package stays free of the app
+    modules and the hydra/uvicorn stack they drag in. The two have to agree
+    exactly -- an overlimit notice is matched on its rendered text, so a
+    thousands separator or a stray sign here is a failed diff.
+    """
+    sign = "-" if value < 0 else ""
+    return f"{sign}${abs(value):,.2f}"
+
+
 class StringSimilarityOperator(BaseOperator):
     """
     Operator is used in DeepDiff to compare strings.
@@ -745,6 +758,18 @@ class BuyWithCardTask(Task):
     options: Optional[dict] = None
     descriptor: str = "OPENAPPS SHOP {order_id}"
     charge_type: str = "Card"
+    # The bank's grace band, mirroring ``apps.openbanking.overlimit_grace``:
+    # dollars a charge may exceed ``available_credit`` by and still authorize.
+    # A purchase that lands inside it posts a *second* ledger row naming the
+    # overage, which is why this is pinned here rather than inferred -- the
+    # target has to carry that row or the diff fails on a charge the app was
+    # always going to approve.
+    overlimit_grace: float = 10.0
+    # Wording of that second row, mirroring ``overlimit_type`` and
+    # ``overlimit_description`` in the bank's content pack. A run on the
+    # german/mandarin packs has to override both.
+    overlimit_type: str = "Fee"
+    overlimit_description: str = "OVERLIMIT NOTICE - credit limit exceeded by {amount}"
 
     @property
     def total(self) -> float:
@@ -768,15 +793,18 @@ class BuyWithCardTask(Task):
         options = dict(self.options or {})
         account = self._card_account(bank.get("accounts") or [])
 
-        # Refuse to build a target for a purchase that would need the
-        # overlimit grace band. It would still authorize in the app, but it
-        # also posts a second "overlimit" row whose wording comes from the
-        # bank's content pack -- a different task, and one that should be
-        # written against that row rather than stumbled into by pricing.
+        # Refuse to build a target for a charge the bank would decline. Past
+        # the grace band `authorize_card_purchase` writes nothing at all -- no
+        # order, no ledger row -- so the target below would describe a state
+        # the app cannot reach. That case is `DeclinedCardPurchaseTask`.
         headroom = round(float(account.get("available_credit") or 0.0), 2)
-        if total > headroom:
+        over_by = round(total - headroom, 2)
+        grace = round(float(self.overlimit_grace), 2)
+        if over_by > grace:
             raise ValueError(
-                f"{total} exceeds the card's available credit of {headroom}"
+                f"{total} exceeds the card's available credit of {headroom} by "
+                f"{over_by}, past the {grace} overlimit grace -- the bank "
+                f"declines this charge, so use DeclinedCardPurchaseTask"
             )
 
         # Checkout empties the lines it bought. When the item starts in the
@@ -820,7 +848,8 @@ class BuyWithCardTask(Task):
         )
         account["available_credit"] = round(headroom - total, 2)
 
-        bank.setdefault("transactions", []).append(
+        transactions = bank.setdefault("transactions", [])
+        transactions.append(
             {
                 # id/position are dropped by the normalizer -- see there.
                 "id": None,
@@ -835,6 +864,26 @@ class BuyWithCardTask(Task):
                 "balance": None,
             }
         )
+        if over_by > 0:
+            # The charge first, then the notice -- `authorize_card_purchase`
+            # inserts them in that order and `/openbanking_all` sorts by id,
+            # so appending in the same order is what the payload comes back
+            # as. The notice carries no money of its own; it is a marker that
+            # the limit was broken, and the overage is named in its text.
+            transactions.append(
+                {
+                    "id": None,
+                    "account_id": account.get("id"),
+                    "position": None,
+                    "date": None,
+                    "description": self.overlimit_description.format(
+                        amount=_fmt_money(over_by)
+                    ),
+                    "type": self.overlimit_type,
+                    "amount": 0.0,
+                    "balance": None,
+                }
+            )
         return target_state
 
     def check_if_task_is_complete(
@@ -847,6 +896,140 @@ class BuyWithCardTask(Task):
         app_state_comparison = AppStateComparison(
             target_state, current_state, normalize_purchases=True
         )
+        return app_state_comparison.compare()
+
+
+@dataclass
+class DeclinedCardPurchaseTask(Task):
+    """Cross-app task: try to buy ``sku`` on a card that cannot cover it.
+
+    The mirror image of ``BuyWithCardTask``. Past the grace band
+    ``authorize_card_purchase`` returns ``insufficient_credit`` and the shop
+    bounces back to ``/onlineshop/checkout`` with the reason in the query
+    string, returning before it writes anything -- so the bank does not move,
+    no order appears, and the cart keeps the line it was about to buy. What
+    the agent is being measured on is reaching that wall --
+    finding the product, carrying the PAN, expiry and CVV over from the bank,
+    and submitting a checkout that gets refused.
+
+    That "nothing happened" is exactly what makes the reward delicate: a diff
+    against the initial state would also pass for an agent that never opened
+    a browser. The scorable delta is therefore the **cart**, which only holds
+    the line because the agent put it there and checkout refused to clear it.
+    Pair this with a todo or a message naming the shortfall -- see
+    ``config/tasks/openbanking.yaml`` -- and doing nothing cannot score.
+
+    ``title`` and ``unit_price`` are pinned here for the reason the rest of
+    the purchase tasks pin their figures: ``/onlineshop_all`` reports the cart
+    with the catalog's title and price joined in, but omits the catalog
+    itself, so neither can be looked up from the state being diffed.
+    """
+
+    sku: str
+    unit_price: float
+    # The catalog title, which `/onlineshop_all` joins onto every cart line.
+    title: str
+    # Last four of the card the checkout must be attempted against. Only used
+    # to find the account whose headroom decides whether this really declines;
+    # a refused charge leaves no last four anywhere in the state.
+    card_last4: str
+    quantity: int = 1
+    options: Optional[dict] = None
+    # Mirrors `apps.openbanking.overlimit_grace`, same as BuyWithCardTask. The
+    # total has to clear `available_credit` *and* this, or the bank approves
+    # and the task is describing something that cannot happen.
+    overlimit_grace: float = 10.0
+
+    @property
+    def total(self) -> float:
+        return round(float(self.unit_price) * int(self.quantity), 2)
+
+    def shortfall(self, initial_state: dict) -> float:
+        """How far past the card's available credit this purchase lands.
+
+        The figure a reporting sub-task asks the agent for. The decline
+        message deliberately does not name it -- see
+        ``charge_insufficient_message`` in the bank's content pack -- so an
+        agent has to read the card's available credit and subtract.
+        """
+        bank = initial_state.get("openbanking")
+        if not isinstance(bank, dict):
+            raise ValueError("DeclinedCardPurchaseTask needs the bank")
+        account = self._card_account(bank.get("accounts") or [])
+        headroom = round(float(account.get("available_credit") or 0.0), 2)
+        return round(self.total - headroom, 2)
+
+    def _card_account(self, accounts: list) -> dict:
+        for account in accounts:
+            number = str(account.get("account_number") or "")
+            if account.get("kind") == "credit_card" and number.endswith(self.card_last4):
+                return account
+        raise ValueError(f"no credit card ending {self.card_last4} in the initial state")
+
+    def get_target_state(self, initial_state: dict) -> dict:
+        target_state = copy.deepcopy(initial_state)
+        shop = target_state.get("online_shop")
+        bank = target_state.get("openbanking")
+        if not isinstance(shop, dict) or not isinstance(bank, dict):
+            raise ValueError("DeclinedCardPurchaseTask needs both the shop and the bank")
+
+        total = self.total
+        options = dict(self.options or {})
+        account = self._card_account(bank.get("accounts") or [])
+
+        # Refuse to build a target for a charge the bank would actually take.
+        # Inside the grace band the purchase goes through and this target --
+        # which says no order exists -- would be scoring the opposite of what
+        # the app does. That case is `BuyWithCardTask`.
+        headroom = round(float(account.get("available_credit") or 0.0), 2)
+        over_by = round(total - headroom, 2)
+        grace = round(float(self.overlimit_grace), 2)
+        if over_by <= grace:
+            raise ValueError(
+                f"{total} fits inside the card's available credit of {headroom} "
+                f"plus {grace} of grace -- the bank approves this charge, so "
+                f"use BuyWithCardTask"
+            )
+
+        # The cart line the refused checkout leaves behind. `/onlineshop/cart/add`
+        # inserts selected=True and checkout only clears lines it actually
+        # bought, so a declined attempt comes back to a cart that still has it.
+        cart = shop.setdefault("cart", [])
+        for row in cart:
+            if row.get("sku") == self.sku and (row.get("options") or {}) == options:
+                # Already seeded in the cart: adding again folds into the line.
+                row["quantity"] = int(self.quantity)
+                row["selected"] = True
+                break
+        else:
+            cart.append(
+                {
+                    "sku": self.sku,
+                    "title": self.title,
+                    "options": options,
+                    "quantity": int(self.quantity),
+                    "selected": True,
+                    "unit_price": float(self.unit_price),
+                }
+            )
+
+        # Everything else is left exactly as it was found. Orders and the card's
+        # balances stay untouched on purpose: a target that merely *omitted*
+        # them would pass for a run that bought the thing on a second card.
+        return target_state
+
+    def check_if_task_is_complete(
+        self, initial_state: dict, current_state: dict, current_url: str | None = None
+    ) -> bool:
+        try:
+            target_state = self.get_target_state(initial_state)
+        except ValueError:
+            return False
+        # `normalize_purchases` stays off, unlike BuyWithCardTask: a decline
+        # mints no order id and no ledger row, so there is nothing volatile to
+        # forgive -- and leaving it off means a spurious order fails the diff
+        # with its id and timestamp intact.
+        app_state_comparison = AppStateComparison(target_state, current_state)
         return app_state_comparison.compare()
 
 

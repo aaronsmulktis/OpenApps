@@ -107,7 +107,7 @@ _TASK_KEYS = list(_TASK_CFG.keys())
 
 
 def _buys(key) -> bool:
-    """Whether a task (or one of its sub-tasks) builds its target by buying.
+    """Whether a task (or one of its sub-tasks) builds its target at checkout.
 
     Those need the shop's *and* the bank's slice in the state they are handed,
     and the captured `initial_state.json` predates both apps -- it carries
@@ -115,9 +115,15 @@ def _buys(key) -> bool:
     fixture every other task in the repo diffs against, their self-consistency
     is checked in `tests/test_buy_with_card.py`, where the state comes from
     both apps actually running.
+
+    `DeclinedCardPurchaseTask` counts even though its checkout is refused: it
+    still scores on the cart the refusal leaves behind, which is the shop's
+    slice.
     """
-    return "BuyWithCardTask" in json.dumps(
-        OmegaConf.to_container(_TASK_CFG[key], resolve=False)
+    serialized = json.dumps(OmegaConf.to_container(_TASK_CFG[key], resolve=False))
+    return any(
+        name in serialized
+        for name in ("BuyWithCardTask", "DeclinedCardPurchaseTask")
     )
 
 
