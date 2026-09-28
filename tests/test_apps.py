@@ -88,6 +88,24 @@ class TestApps:
         response = client.get("/maps")
         assert response.status_code == 200
 
+    def test_openbanking(self, client):
+        response = client.get("/openbanking")
+        assert response.status_code == 200
+
+    def test_openbanking_account(self, client):
+        response = client.get("/openbanking/accounts/0")
+        assert response.status_code == 200
+
+    def test_openbanking_all(self, client):
+        """checks url used for rewards"""
+        response = client.get("/openbanking_all")
+        assert response.status_code == 200
+
+        response_json = response.json()
+        assert set(response_json) == {"accounts", "transactions"}
+        assert response_json["accounts"]
+        assert response_json["transactions"]
+
     def test_onlineshop(self, client):
         if get_java_version().startswith("21"):
             response = client.get("/onlineshop")
